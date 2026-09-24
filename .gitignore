@@ -1,0 +1,38 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor and assistant state
+.idea/
+.vscode/
+.codex/
+.claude/
+*.swp
+*.swo
+*~
+
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Runtime and diagnostic output
+*.log
+*.pid
+logs/
+
+# Local daemon storage. Database files must never be committed.
+/store/
+
+# Local caches and test coverage output
+.cache/
+coverage/
+*.lcov
+tmp/
+temp/

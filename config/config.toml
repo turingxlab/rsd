@@ -1,0 +1,13 @@
+[server]
+addr = "echo.websocket.org"
+port = 443
+tls = true
+
+[websocket]
+path = "/device/rsd/cmd"
+reconnect_interval_sec = 5
+heartbeat_enabled = true
+heartbeat_interval_sec = 3
+
+[logging]
+level = "debug"
