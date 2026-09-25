@@ -1,10 +1,10 @@
 [server]
-addr = "echo.websocket.org"
-port = 443
-tls = true
+addr = "localhost"
+port = 8080
+tls = false
 
 [websocket]
-path = "/device/rsd/cmd"
+path = "/ws/rsd/cmd"
 reconnect_interval_sec = 5
 heartbeat_enabled = true
 heartbeat_interval_sec = 3

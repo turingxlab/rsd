@@ -21,20 +21,23 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use url::Url;
 
-pub use crate::network::protocol::{WsCmd, WsMessage};
+pub use crate::network::protocol::{DeviceInfo, WsCmd, WsMessage};
 
 /// 通用 WebSocket 连接管理器：负责建立连接、自动重连，
 /// 并通过发送/接收通道对外复用同一条连接。
 pub struct WebSocketClient {
     url: String,
     reconnect_interval: Duration,
+    /// 连接建立后随 declare 上报的设备信息
+    device_info: DeviceInfo,
 }
 
 impl WebSocketClient {
-    pub fn new(app_config: &AppConfig) -> Self {
+    pub fn new(app_config: &AppConfig, device_info: &DeviceInfo) -> Self {
         Self {
             url: Self::url(app_config),
             reconnect_interval: Duration::from_secs(app_config.websocket.reconnect_interval_sec),
+            device_info: device_info.clone(),
         }
     }
 
@@ -46,10 +49,12 @@ impl WebSocketClient {
 
         let url = self.url.clone();
         let reconnect_interval = self.reconnect_interval;
+        let device_info = self.device_info.clone();
 
         tokio::spawn(async move {
             loop {
-                let outcome = Self::run_connection(&url, &mut rx, &broadcast_tx).await;
+                let outcome =
+                    Self::run_connection(&url, &mut rx, &broadcast_tx, &device_info).await;
                 match outcome {
                     // 所有发送方已关闭，说明业务已结束，不再重连
                     ConnectionOutcome::Stop => {
@@ -89,13 +94,14 @@ impl WebSocketClient {
         url.to_string()
     }
 
-    /// 连接 → 拆流 → 双泵收发，直到断连或所有发送方关闭。
+    /// 连接 → 拆流 → 声明设备信息 → 双泵收发，直到断连或所有发送方关闭。
     async fn run_connection(
         url: &str,
         rx: &mut mpsc::Receiver<WsMessage>,
         broadcast_tx: &broadcast::Sender<WsMessage>,
+        device_info: &DeviceInfo,
     ) -> ConnectionOutcome {
-        Self::connect_once(url, rx, broadcast_tx)
+        Self::connect_once(url, rx, broadcast_tx, device_info)
             .await
             .unwrap_or_else(|e| {
                 tracing::error!("Connection failed: {}", e);
@@ -107,6 +113,7 @@ impl WebSocketClient {
         url: &str,
         rx: &mut mpsc::Receiver<WsMessage>,
         broadcast_tx: &broadcast::Sender<WsMessage>,
+        device_info: &DeviceInfo,
     ) -> anyhow::Result<ConnectionOutcome> {
         tracing::info!("Connecting to {}", url);
 
@@ -115,6 +122,13 @@ impl WebSocketClient {
         tracing::info!("Connected. HTTP status: {}", response.status());
 
         let (mut write, mut read) = ws_stream.split();
+
+        // 连接建立后立即声明设备信息；重连成功时同样发送
+        let declare = WsMessage::with_data(WsCmd::Declare, serde_json::to_value(device_info)?);
+        let text = serde_json::to_string(&declare)?;
+        if let Err(e) = write.send(Message::Text(text.into())).await {
+            tracing::warn!("Failed to send declare: {}", e);
+        }
 
         // 发送泵：从 mpsc 队列取消息，序列化成 JSON 写入连接
         let send_pump = async {

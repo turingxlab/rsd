@@ -15,6 +15,7 @@
 mod args;
 mod banner;
 mod config;
+mod device;
 mod network;
 
 use crate::args::Args;
@@ -27,8 +28,15 @@ use tracing_subscriber::fmt::time::LocalTime;
 pub async fn run() -> anyhow::Result<()> {
     let (_, app_config) = bootstrap()?;
 
+    // 启动早期计算设备信息（declare 上报用）；所有标识来源缺失时直接启动失败
+    let device_info = device::device_info()?;
+
+    // 输出启动信息
+    banner::print_banner();
+    tracing::info!("Application running.");
+
     // 初始化 WebSocket 连接（后台自动重连），得到可复用的发送/接收出口
-    let ws_client = WebSocketClient::new(&app_config);
+    let ws_client = WebSocketClient::new(&app_config, &device_info);
     let handle = ws_client.connect();
 
     // 启动心跳：复用同一条连接，定时发送 ping
@@ -84,10 +92,6 @@ fn bootstrap() -> anyhow::Result<(Args, AppConfig)> {
         .with_env_filter(filter)
         .with_timer(timer)
         .init();
-
-    // 输出启动信息
-    banner::print_banner();
-    tracing::info!("Application running.");
 
     Ok((args, app_config))
 }

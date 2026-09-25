@@ -19,6 +19,7 @@ use time::OffsetDateTime;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WsCmd {
+    Declare,
     Ping,
     Pong,
     Config,
@@ -27,6 +28,7 @@ pub enum WsCmd {
 /// 一条 ws 消息，统一结构：cmd + timestamp + 可选 data。
 ///
 /// `cmd` 标识消息类型：
+/// - `WsCmd::Declare`：客户端声明（data 为设备信息）
 /// - `WsCmd::Ping`：客户端心跳（无 data）
 /// - `WsCmd::Pong`：服务端回应心跳
 /// - `WsCmd::Config`：服务端下发配置（data 为配置内容）
@@ -53,8 +55,6 @@ impl WsMessage {
     }
 
     /// 构造一条带负载消息（业务数据 / 服务端下发）
-    // 预留 API：供后续业务消息使用，暂无调用点，故暂时标注允许 dead_code
-    #[allow(dead_code)]
     pub fn with_data(cmd: WsCmd, data: serde_json::Value) -> Self {
         Self {
             cmd,
@@ -62,6 +62,18 @@ impl WsMessage {
             data: Some(data),
         }
     }
+}
+
+/// `WsCmd::Declare`消息类型的`data`结构，设备信息
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct DeviceInfo {
+    /// 设备唯一标识：对硬件/系统标识做 SHA-256（大写 hex）并截取前 16 位得到的定长 ID
+    pub device_id: String,
+    /// 设备 IP 地址
+    pub ip: String,
+    /// 设备版本号
+    pub version: String,
 }
 
 fn now_ms() -> u64 {
@@ -74,6 +86,10 @@ mod tests {
 
     #[test]
     fn cmd_serializes_as_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&WsCmd::Declare).unwrap(),
+            r#""declare""#
+        );
         assert_eq!(serde_json::to_string(&WsCmd::Ping).unwrap(), r#""ping""#);
         assert_eq!(serde_json::to_string(&WsCmd::Pong).unwrap(), r#""pong""#);
         assert_eq!(
