@@ -127,7 +127,7 @@ impl WebSocketClient {
         let declare = WsMessage::with_data(WsCmd::Declare, serde_json::to_value(device_info)?);
         let text = serde_json::to_string(&declare)?;
         if let Err(e) = write.send(Message::Text(text.into())).await {
-            tracing::warn!("Failed to send declare: {}", e);
+            tracing::error!("Failed to send declare: {}", e);
         }
 
         // 发送泵：从 mpsc 队列取消息，序列化成 JSON 写入连接
