@@ -17,11 +17,16 @@ mod banner;
 mod config;
 mod device;
 mod network;
+mod process;
+mod utils;
 
 use crate::args::Args;
 use crate::config::AppConfig;
+use crate::network::protocol::{Settings, WsMessage};
 use crate::network::websocket::{WebSocketClient, WsCmd, start_heartbeat};
+use crate::process::ProcessManager;
 use anyhow::Context;
+use std::fs;
 use tracing_subscriber::fmt::time::LocalTime;
 
 /// 启动 rsd 主程序
@@ -38,6 +43,7 @@ pub async fn run() -> anyhow::Result<()> {
     // 初始化 WebSocket 连接（后台自动重连），得到可复用的发送/接收出口
     let ws_client = WebSocketClient::new(&app_config, &device_info);
     let handle = ws_client.connect();
+    let process_manager = ProcessManager::default();
 
     // 启动心跳：复用同一条连接，定时发送 ping
     if app_config.websocket.heartbeat_enabled {
@@ -49,11 +55,21 @@ pub async fn run() -> anyhow::Result<()> {
 
     // 监听服务端下发消息（如 pong 回应、config 配置）
     let mut rx = handle.rx.resubscribe();
-    tokio::spawn(async move {
+    let process_manager_for_messages = process_manager.clone();
+    let message_task = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
             match &msg.cmd {
                 WsCmd::Pong => tracing::debug!("Received pong"),
-                WsCmd::Config => tracing::debug!("Received config: {:?}", msg.data),
+                WsCmd::Config => {
+                    if let Ok(text) = serde_json::to_string(&msg.data) {
+                        tracing::debug!("Received config: {}", text);
+                    }
+                }
+                WsCmd::Settings => {
+                    if let Err(error) = apply_settings(msg, &process_manager_for_messages) {
+                        tracing::error!("Failed to apply settings: {error:#}");
+                    }
+                }
                 _ => {
                     if let Ok(text) = serde_json::to_string(&msg) {
                         tracing::debug!("Unknown msg: {}", text);
@@ -63,10 +79,17 @@ pub async fn run() -> anyhow::Result<()> {
         }
     });
 
-    tokio::signal::ctrl_c()
+    let signal_result = tokio::signal::ctrl_c()
         .await
-        .context("Failed to listen for Ctrl-C")?;
+        .context("Failed to listen for Ctrl-C");
 
+    message_task.abort();
+    let _ = message_task.await;
+    if let Err(error) = process_manager.stop_all() {
+        tracing::warn!(%error, "Failed to stop applications");
+    }
+
+    signal_result?;
     Ok(())
 }
 
@@ -83,7 +106,7 @@ fn bootstrap() -> anyhow::Result<(Args, AppConfig)> {
         time::format_description::parse_borrowed::<3>(
             "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]",
         )
-        .expect("invalid time format"),
+        .expect("Invalid time format"),
     );
     // 过滤器优先级：RUST_LOG（有效时）> config.toml [logging].level > 内置默认 info
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -94,4 +117,37 @@ fn bootstrap() -> anyhow::Result<(Args, AppConfig)> {
         .init();
 
     Ok((args, app_config))
+}
+
+fn apply_settings(msg: WsMessage, process_manager: &ProcessManager) -> anyhow::Result<()> {
+    let settings: Settings = serde_json::from_value(msg.data.context("Settings data is missing")?)
+        .context("Failed to parse settings")?;
+
+    let text = toml::to_string_pretty(&settings).context("Failed to serialize settings")?;
+    tracing::debug!("Received settings:\n{}", text);
+    let config_path = utils::exe_dir()
+        .context("Failed to locate executable directory")?
+        .join("settings.toml");
+    fs::write(config_path, text).context("Failed to save settings")?;
+
+    let application = settings.applications.iter().find(|app| app.active);
+    process_manager.stop_except(application.map(|app| app.app_id.as_str()))?;
+    let launcher = application
+        .map(|app| {
+            settings
+                .launchers
+                .iter()
+                .find(|launcher| launcher.launcher_id == app.launcher_id)
+                .with_context(|| {
+                    format!(
+                        "Launcher {} not found for application {}",
+                        app.launcher_id, app.app_id
+                    )
+                })
+        })
+        .transpose()?;
+    if let (Some(application), Some(launcher)) = (application, launcher) {
+        process_manager.start(application, launcher)?;
+    }
+    Ok(())
 }

@@ -23,6 +23,7 @@ pub enum WsCmd {
     Ping,
     Pong,
     Config,
+    Settings,
 }
 
 /// 一条 ws 消息，统一结构：cmd + timestamp + 可选 data。
@@ -33,7 +34,6 @@ pub enum WsCmd {
 /// - `WsCmd::Pong`：服务端回应心跳
 /// - `WsCmd::Config`：服务端下发配置（data 为配置内容）
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub struct WsMessage {
     /// 消息类型
     pub cmd: WsCmd,
@@ -66,7 +66,6 @@ impl WsMessage {
 
 /// `WsCmd::Declare`消息类型的`data`结构，设备信息
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub struct DeviceInfo {
     /// 设备唯一标识：对硬件/系统标识做 SHA-256（大写 hex）并截取前 16 位得到的定长 ID
     pub device_id: String,
@@ -74,6 +73,42 @@ pub struct DeviceInfo {
     pub ip: String,
     /// 设备版本号
     pub version: String,
+}
+
+/// 业务配置
+#[allow(dead_code)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Settings {
+    /// 启动器，浏览器类型应用需要依赖浏览器进行启动
+    pub launchers: Vec<Launcher>,
+    /// 应用程序
+    pub applications: Vec<Application>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Launcher {
+    pub launcher_id: String,
+    pub path: String,
+    pub version: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Application {
+    pub app_id: String,
+    pub app_name: String,
+    pub app_type: AppType,
+    pub version: String,
+    pub url: String,
+    pub args: Vec<String>,
+    pub launcher_id: String,
+    pub active: bool,
+}
+
+/// 应用类型枚举
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AppType {
+    /// 浏览器应用
+    Browser,
 }
 
 fn now_ms() -> u64 {
@@ -95,6 +130,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&WsCmd::Config).unwrap(),
             r#""config""#
+        );
+        assert_eq!(
+            serde_json::to_string(&WsCmd::Settings).unwrap(),
+            r#""settings""#
         );
     }
 
