@@ -106,6 +106,7 @@ pub struct Application {
 
 /// 应用类型枚举
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AppType {
     /// 浏览器应用
     Browser,
