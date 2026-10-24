@@ -17,13 +17,13 @@ use clap::Parser;
 use std::path::PathBuf;
 
 /// 与可执行文件同目录的默认配置文件名
-const CONFIG_FILE_NAME: &str = "config.toml";
+const CONFIG_FILE_NAME: &str = "rsd.toml";
 
 /// A cross-platform daemon for remote devices.
 #[derive(Debug, Parser)]
 #[command(name = "rsd", version)]
 pub struct Args {
-    /// Config file path (default "./config.toml")
+    /// Config file path (default: rsd.toml next to the executable)
     #[arg(short = 'c', long)]
     config: Option<PathBuf>,
 }
@@ -51,7 +51,7 @@ impl Args {
     }
 }
 
-/// 解析默认配置路径：`<可执行文件所在目录>/config.toml`
+/// 解析默认配置路径：`<可执行文件所在目录>/rsd.toml`
 ///
 /// 使用 `current_exe()` 而非当前工作目录，使服务以绝对路径启动时
 /// （systemd / launchd / 双击运行）也能定位到随程序分发的配置文件。
@@ -80,12 +80,12 @@ mod tests {
 
     #[test]
     fn parses_short_config_flag() {
-        let args = Args::try_parse_from(["rsd", "-c", "/etc/rsd/config.toml"])
+        let args = Args::try_parse_from(["rsd", "-c", "/etc/rsd/rsd.toml"])
             .expect("-c should be accepted");
 
         assert_eq!(
             args.config().expect("explicit path should be used"),
-            PathBuf::from("/etc/rsd/config.toml")
+            PathBuf::from("/etc/rsd/rsd.toml")
         );
     }
 

@@ -12,8 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::path::PathBuf;
-
-pub fn exe_dir() -> Option<PathBuf> {
-    std::env::current_exe().ok()?.parent().map(PathBuf::from)
-}
+pub mod dir_util;

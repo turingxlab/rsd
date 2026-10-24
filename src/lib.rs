@@ -28,6 +28,7 @@ use crate::process::ProcessManager;
 use anyhow::Context;
 use std::fs;
 use tracing_subscriber::fmt::time::LocalTime;
+use crate::utils::dir_util;
 
 /// 启动 rsd 主程序
 pub async fn run() -> anyhow::Result<()> {
@@ -98,7 +99,7 @@ fn bootstrap() -> anyhow::Result<(Args, AppConfig)> {
     // 避免帮助与错误信息被启动横幅和日志输出干扰。
     let args = args::Args::parse_args();
 
-    // 加载配置文件（-c 显式指定优先，否则回退到可执行文件同目录下的 config.toml）
+    // 加载配置文件（-c 显式指定优先，否则回退到可执行文件同目录下的 rsd.toml）
     let app_config = AppConfig::load_from_file(args.config()?)?;
 
     // 初始化日志工具
@@ -108,7 +109,7 @@ fn bootstrap() -> anyhow::Result<(Args, AppConfig)> {
         )
         .expect("Invalid time format"),
     );
-    // 过滤器优先级：RUST_LOG（有效时）> config.toml [logging].level > 内置默认 info
+    // 过滤器优先级：RUST_LOG（有效时）> rsd.toml [logging].level > 内置默认 info
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&app_config.logging.level));
     tracing_subscriber::fmt()
@@ -125,7 +126,7 @@ fn apply_settings(msg: WsMessage, process_manager: &ProcessManager) -> anyhow::R
 
     let text = toml::to_string_pretty(&settings).context("Failed to serialize settings")?;
     tracing::debug!("Received settings:\n{}", text);
-    let config_path = utils::exe_dir()
+    let config_path = dir_util::exe_dir()
         .context("Failed to locate executable directory")?
         .join("settings.toml");
     fs::write(config_path, text).context("Failed to save settings")?;

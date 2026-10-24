@@ -1,0 +1,12 @@
+[server]
+addr = "rsd.com"
+tls = true
+
+[websocket]
+path = "/ws/rsd/cmd"
+reconnect_interval_sec = 30
+heartbeat_enabled = true
+heartbeat_interval_sec = 30
+
+[logging]
+level = "info"
