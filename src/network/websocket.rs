@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::config::AppConfig;
+use crate::config::RsdConfig;
 use futures_util::{SinkExt, StreamExt};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
@@ -33,10 +33,10 @@ pub struct WebSocketClient {
 }
 
 impl WebSocketClient {
-    pub fn new(app_config: &AppConfig, device_info: &DeviceInfo) -> Self {
+    pub fn new(rsd_config: &RsdConfig, device_info: &DeviceInfo) -> Self {
         Self {
-            url: Self::url(app_config),
-            reconnect_interval: Duration::from_secs(app_config.websocket.reconnect_interval_sec),
+            url: Self::url(rsd_config),
+            reconnect_interval: Duration::from_secs(rsd_config.websocket.reconnect_interval_sec),
             device_info: device_info.clone(),
         }
     }
@@ -76,8 +76,8 @@ impl WebSocketClient {
         }
     }
 
-    fn url(app_config: &AppConfig) -> String {
-        let scheme = match app_config.server.tls {
+    fn url(rsd_config: &RsdConfig) -> String {
+        let scheme = match rsd_config.server.tls {
             true => "wss",
             false => "ws",
         };
@@ -85,7 +85,7 @@ impl WebSocketClient {
         let url = Url::parse(
             format!(
                 "{}://{}:{}{}",
-                scheme, app_config.server.addr, app_config.server.port, app_config.websocket.path,
+                scheme, rsd_config.server.addr, rsd_config.server.port, rsd_config.websocket.path,
             )
             .as_str(),
         )

@@ -23,7 +23,7 @@ pub enum WsCmd {
     Ping,
     Pong,
     Config,
-    Settings,
+    Apps,
 }
 
 /// 一条 ws 消息，统一结构：cmd + timestamp + 可选 data。
@@ -33,6 +33,7 @@ pub enum WsCmd {
 /// - `WsCmd::Ping`：客户端心跳（无 data）
 /// - `WsCmd::Pong`：服务端回应心跳
 /// - `WsCmd::Config`：服务端下发配置（data 为配置内容）
+/// - `WsCmd::Apps`：服务端下发应用配置（data 为启动器与应用清单）
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WsMessage {
     /// 消息类型
@@ -75,10 +76,10 @@ pub struct DeviceInfo {
     pub version: String,
 }
 
-/// 业务配置
+/// 应用配置：服务端下发的启动器与应用清单。
 #[allow(dead_code)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Settings {
+pub struct AppConfig {
     /// 启动器，浏览器类型应用需要依赖浏览器进行启动
     pub launchers: Vec<Launcher>,
     /// 应用程序
@@ -132,10 +133,7 @@ mod tests {
             serde_json::to_string(&WsCmd::Config).unwrap(),
             r#""config""#
         );
-        assert_eq!(
-            serde_json::to_string(&WsCmd::Settings).unwrap(),
-            r#""settings""#
-        );
+        assert_eq!(serde_json::to_string(&WsCmd::Apps).unwrap(), r#""apps""#);
     }
 
     #[test]

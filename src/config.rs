@@ -111,7 +111,7 @@ impl Default for LoggingConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AppConfig {
+pub struct RsdConfig {
     pub server: ServerConfig,
     /// 整个 `[websocket]` 表省略时取默认配置
     #[serde(default)]
@@ -121,7 +121,7 @@ pub struct AppConfig {
     pub logging: LoggingConfig,
 }
 
-impl AppConfig {
+impl RsdConfig {
     /// 从指定的 TOML 文件路径加载配置
     pub fn load_from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path_ref = path.as_ref();
@@ -129,7 +129,7 @@ impl AppConfig {
         let content =
             fs::read_to_string(path_ref).with_context(|| format!("{}", path_ref.display()))?;
 
-        let config: AppConfig =
+        let config: RsdConfig =
             toml::from_str(&content).with_context(|| format!("{}", path_ref.display()))?;
 
         Ok(config)
@@ -140,7 +140,7 @@ impl AppConfig {
 mod tests {
     use super::*;
 
-    fn parse(content: &str) -> anyhow::Result<AppConfig> {
+    fn parse(content: &str) -> anyhow::Result<RsdConfig> {
         Ok(toml::from_str(content)?)
     }
 

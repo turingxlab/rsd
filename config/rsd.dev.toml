@@ -5,9 +5,9 @@ tls = false
 
 [websocket]
 path = "/ws/rsd/cmd"
-reconnect_interval_sec = 5
+reconnect_interval_sec = 30
 heartbeat_enabled = true
-heartbeat_interval_sec = 3
+heartbeat_interval_sec = 30
 
 [logging]
 level = "debug"
