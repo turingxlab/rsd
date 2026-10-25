@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  RUST_TOOLCHAIN: 1.97.1
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            platform: macos-arm64
+            runner: macos-14
+            binary: rsd
+          - target: x86_64-apple-darwin
+            platform: macos-x86_64
+            runner: macos-13
+            binary: rsd
+          - target: aarch64-pc-windows-msvc
+            platform: windows-arm64
+            runner: windows-11-arm
+            binary: rsd.exe
+          - target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
+            runner: windows-2022
+            binary: rsd.exe
+          - target: aarch64-unknown-linux-gnu
+            platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            binary: rsd
+          - target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
+            runner: ubuntu-24.04
+            binary: rsd
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        shell: bash
+        run: cargo build --release --target "${{ matrix.target }}"
+
+      - name: Package archives
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+          BINARY: ${{ matrix.binary }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          package_dir="rsd-${VERSION}-${PLATFORM}"
+          mkdir -p "${package_dir}"
+          cp "target/${TARGET}/release/${BINARY}" "${package_dir}/"
+          cp "target/${TARGET}/release/rsd.toml" "${package_dir}/"
+          cp LICENSE "${package_dir}/"
+          tar -czf "${package_dir}.tar.gz" "${package_dir}"
+          if [[ "${TARGET}" == *-pc-windows-msvc ]]; then
+            if command -v zip >/dev/null 2>&1; then
+              zip -qr "${package_dir}.zip" "${package_dir}"
+            else
+              7z a -tzip "${package_dir}.zip" "${package_dir}" >/dev/null
+            fi
+          fi
+
+      - name: Upload archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: archives-${{ matrix.target }}
+          path: |
+            rsd-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz
+            rsd-${{ github.ref_name }}-${{ matrix.platform }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: archives-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: rsd ${{ github.ref_name }}
+          generate_release_notes: true
+          files: artifacts/*
