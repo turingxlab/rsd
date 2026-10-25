@@ -2,7 +2,7 @@
 
 <img src="assets/SVG/logo-with-text.svg" width="350" alt="rsd logo">
 
-### A cross-platform daemon deployed on remote devices, providing remote operations and maintenance for browser-deployed applications such as digital twins and visualization dashboards.
+### A cross-platform daemon for remote management and maintenance of browser-based apps and dashboards.
 
 [![Version](https://img.shields.io/github/v/release/turingxlab/rsd?color=blue&label=version)](https://github.com/turingxlab/rsd/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20MacOS%20%7C%20Linux-green.svg)](https://github.com/turingxlab/rsd/releases)

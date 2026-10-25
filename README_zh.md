@@ -2,7 +2,7 @@
 
 <img src="assets/SVG/logo-with-text.svg" width="350" alt="rsd logo">
 
-### 部署在远程设备的跨平台守护进程，为数字孪生、可视化大屏等浏览器部署应用提供远程运维能力。
+### 一个用于浏览器应用和看板远程管理运维的跨平台守护进程。
 
 [![Version](https://img.shields.io/github/v/release/turingxlab/rsd?color=blue&label=version)](https://github.com/turingxlab/rsd/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20MacOS%20%7C%20Linux-green.svg)](https://github.com/turingxlab/rsd/releases)
