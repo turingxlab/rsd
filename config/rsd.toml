@@ -1,6 +1,7 @@
 [server]
-addr = "rsd.com"
-tls = true
+addr = "127.0.0.1"
+port = 8080
+tls = false
 
 [websocket]
 path = "/ws/rsd/cmd"
