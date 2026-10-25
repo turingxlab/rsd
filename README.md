@@ -22,6 +22,8 @@
 
 It maintains a WebSocket connection to the server, reports device information, and starts and manages browser applications according to the configuration delivered by the server.
 
+![rsd architecture](assets/SVG/architecture.svg)
+
 ## Core Capabilities
 
 - **Device registration**: Reports the device ID, local IP address, and program version after connecting.

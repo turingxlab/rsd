@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" role="img" aria-labelledby="architectureTitle architectureDescription">
+  <title id="architectureTitle">RSD ARCHITECTURE</title>
+  <desc id="architectureDescription">A remote server communicates with the rsd daemon over WebSocket. The daemon reads its local configuration, reports device identity, supervises a Chromium process, and launches the dashboard application URL.</desc>
+
+  <defs>
+    <linearGradient id="brandGradient" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#53F3FD"/><stop offset="100%" stop-color="#4E42ED"/></linearGradient>
+    <linearGradient id="logoGradientV2" x1="101.68" y1="47.72" x2="210.83" y2="47.72" gradientTransform="translate(-11.79 -79.97) rotate(45)" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#53F3FD"/><stop offset="1" stop-color="#4E42ED"/></linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0F172A" flood-opacity="0.08"/></filter>
+    <marker id="arrowAccent" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M0 0L9 4.5L0 9Z" fill="#4E42ED"/></marker>
+    <marker id="arrowMuted" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M0 0L9 4.5L0 9Z" fill="#94A3B8"/></marker>
+    <marker id="arrowSlate" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth"><path d="M0 0L9 4.5L0 9Z" fill="#64748B"/></marker>
+    <style>
+      text { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+      .label { fill: #0F172A; font-size: 17px; font-weight: 650; }
+      .subtext { fill: #64748B; font-size: 13px; }
+      .dark-label { fill: #F8FAFC; font-size: 15px; font-weight: 650; }
+      .dark-subtext { fill: #93A7BC; font-size: 12px; }
+      .flow-label { fill: #64748B; font-size: 12px; font-weight: 600; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="780" fill="#F8FAFC"/>
+  <rect width="1200" height="8" fill="url(#brandGradient)"/>
+  <g transform="translate(56 37) scale(0.40625)" aria-label="rsd logo">
+    <rect width="128" height="128" rx="30" ry="30" fill="#141D26"/>
+    <path fill="url(#logoGradientV2)" d="M107.63 49.46H44.6c-3.95 0-7.15-3.2-7.15-7.15s3.2-7.15 7.15-7.15h63.03c3.95 0 7.15 3.2 7.15 7.15s-3.2 7.15-7.15 7.15Zm6.75 36.5c0-3.95-3.2-7.15-7.15-7.15H20.91c-3.95 0-7.15 3.2-7.15 7.15s3.2 7.15 7.15 7.15h86.32c3.95 0 7.15-3.2 7.15-7.15ZM72.72 20.55c0-3.95-3.2-7.15-7.15-7.15H41.61c-3.95 0-7.15 3.2-7.15 7.15s3.2 7.15 7.15 7.15h23.96c3.95 0 7.15-3.2 7.15-7.15Zm47.22 43.52c0-3.95-3.2-7.15-7.15-7.15H64.07c-3.95 0-7.15 3.2-7.15 7.15s3.2 7.15 7.15 7.15h48.72c3.95 0 7.15-3.2 7.15-7.15ZM45.7 64.07c0-3.95-3.2-7.15-7.15-7.15H15.22c-3.95 0-7.15 3.2-7.15 7.15s3.2 7.15 7.15 7.15h23.33c3.95 0 7.15-3.2 7.15-7.15Zm50.07 43.6c0-3.95-3.2-7.15-7.15-7.15H67.93c-3.95 0-7.15 3.2-7.15 7.15s3.2 7.15 7.15 7.15h20.69c3.95 0 7.15-3.2 7.15-7.15ZM93.35 15.01a6.97 6.97 0 1 0-9.85 9.85 6.97 6.97 0 0 0 9.85-9.85ZM24.54 37.38a6.97 6.97 0 1 0-9.85 9.85 6.97 6.97 0 0 0 9.85-9.85Zm21.36 65.75a6.97 6.97 0 1 0-9.85 9.85 6.97 6.97 0 0 0 9.85-9.85Z"/>
+  </g>
+  <text x="120" y="58" fill="#0F172A" font-size="27" font-weight="750">RSD ARCHITECTURE</text>
+  <text x="120" y="86" fill="#64748B" font-size="14">Remote operations for unattended browser applications</text>
+  <rect x="924" y="45" width="220" height="34" rx="17" fill="#EEF2FF" stroke="#C7D2FE"/>
+  <circle cx="944" cy="62" r="4" fill="#4E42ED"/>
+  <text x="956" y="67" fill="#4338CA" font-size="12" font-weight="650">CROSS-PLATFORM DAEMON</text>
+
+  <g filter="url(#softShadow)"><rect x="430" y="112" width="340" height="104" rx="18" fill="#FFFFFF" stroke="#D9E2EC"/></g>
+  <rect x="452" y="136" width="46" height="46" rx="13" fill="#EEF2FF"/>
+  <g transform="translate(463 147)" fill="none" stroke="#4E42ED" stroke-width="2" stroke-linecap="round"><rect x="0" y="0" width="24" height="7" rx="2"/><rect x="0" y="11" width="24" height="7" rx="2"/><circle cx="4" cy="3.5" r="1" fill="#4E42ED" stroke="none"/><circle cx="4" cy="14.5" r="1" fill="#4E42ED" stroke="none"/></g>
+  <text x="516" y="148" class="label">Remote Server</text><text x="516" y="172" class="subtext">WebSocket endpoint</text><text x="452" y="201" fill="#475569" font-size="12">JSON messages over ws / wss</text>
+
+  <rect x="56" y="260" width="1088" height="458" rx="26" fill="#FFFFFF" fill-opacity="0.72" stroke="#D8E2EE"/>
+  <rect x="82" y="282" width="142" height="28" rx="14" fill="#E8F1FF"/><circle cx="98" cy="296" r="4" fill="#0EA5E9"/><text x="110" y="301" fill="#0369A1" font-size="12" font-weight="700" letter-spacing="0.7">REMOTE DEVICE</text>
+
+  <!-- Keep communication flows above the remote-device card so the arrows remain visible. -->
+  <path d="M552 330 L552 220" fill="none" stroke="#4E42ED" stroke-width="2.2" marker-end="url(#arrowAccent)"/>
+  <text x="538" y="246" text-anchor="end" class="flow-label">declare / ping</text>
+  <path d="M648 220 L648 330" fill="none" stroke="#64748B" stroke-width="2.2" marker-end="url(#arrowSlate)"/>
+  <text x="664" y="246" class="flow-label">apps / config / pong</text>
+
+  <g filter="url(#softShadow)"><rect x="88" y="402" width="198" height="116" rx="18" fill="#FFFFFF" stroke="#D9E2EC"/></g>
+  <rect x="110" y="423" width="34" height="34" rx="10" fill="#F1F5F9"/><g transform="translate(118 431)" fill="none" stroke="#64748B" stroke-width="1.8" stroke-linecap="round"><path d="M0 3H18"/><path d="M0 9H13"/><path d="M0 15H16"/></g>
+  <text x="156" y="436" class="label">rsd.toml</text><text x="110" y="477" class="subtext">WebSocket and logging</text><text x="110" y="497" class="subtext">configuration</text>
+  <path d="M288 460 L338 460" fill="none" stroke="#4E42ED" stroke-width="2" marker-end="url(#arrowAccent)"/><text x="313" y="445" text-anchor="middle" class="flow-label">load</text>
+
+  <g filter="url(#softShadow)"><rect x="340" y="338" width="380" height="330" rx="24" fill="#111C2E" stroke="#263A55"/></g>
+  <text x="364" y="373" fill="#F8FAFC" font-size="21" font-weight="750">rsd</text><text x="364" y="394" class="dark-subtext">Device-side orchestrator</text>
+  <rect x="364" y="407" width="332" height="68" rx="13" fill="#172337" stroke="#2B425C"/><circle cx="387" cy="434" r="9" fill="#172C45"/><circle cx="387" cy="434" r="3" fill="#53F3FD"/><text x="406" y="432" class="dark-label">WebSocket client</text><text x="406" y="452" class="dark-subtext">connect · heartbeat · reconnect</text>
+  <rect x="364" y="488" width="332" height="64" rx="13" fill="#172337" stroke="#2B425C"/><circle cx="387" cy="513" r="9" fill="#24255A"/><path d="M383 513H391M387 509V517" stroke="#A5B4FC" stroke-width="1.6" stroke-linecap="round"/><text x="406" y="510" class="dark-label">Device identity</text><text x="406" y="530" class="dark-subtext">device ID · local IP · version</text>
+  <rect x="364" y="565" width="332" height="72" rx="13" fill="#172337" stroke="#2B425C"/><circle cx="387" cy="592" r="9" fill="#123747"/><path d="M384 587L391 592L384 597Z" fill="#53F3FD"/><text x="406" y="589" class="dark-label">Process supervisor</text><text x="406" y="609" class="dark-subtext">launch · monitor · restart</text>
+
+  <g filter="url(#softShadow)"><rect x="790" y="402" width="300" height="104" rx="18" fill="#FFFFFF" stroke="#D9E2EC"/></g><rect x="812" y="424" width="42" height="42" rx="12" fill="#ECFEFF"/><g transform="translate(820 433)" fill="none" stroke="#0891B2" stroke-width="1.8" stroke-linecap="round"><rect x="0" y="0" width="26" height="23" rx="4"/><path d="M0 7H26"/><circle cx="5" cy="3.5" r="1" fill="#0891B2" stroke="none"/></g><text x="868" y="440" class="label">Chromium</text><text x="868" y="463" class="subtext">Kiosk browser process</text><text x="812" y="489" class="subtext">Started with dashboard URL and arguments</text>
+  <text x="724" y="444" class="flow-label">spawn</text><path d="M720 458 L788 458" fill="none" stroke="#4E42ED" stroke-width="2.2" marker-end="url(#arrowAccent)"/>
+  <path d="M790 486 C756 510 752 557 720 598" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#arrowMuted)"/><rect x="728" y="536" width="48" height="22" rx="7" fill="#F8FAFC"/><text x="752" y="551" text-anchor="middle" fill="#64748B" font-size="11" font-weight="600">exit</text>
+  <g filter="url(#softShadow)"><rect x="790" y="558" width="300" height="104" rx="18" fill="#FFFFFF" stroke="#D9E2EC"/></g><rect x="812" y="580" width="42" height="42" rx="12" fill="#EEF2FF"/><g transform="translate(822 590)" fill="none" stroke="#4E42ED" stroke-width="1.7"><rect x="0" y="0" width="22" height="22" rx="3"/><path d="M0 8H22M8 8V22" stroke-linecap="round"/></g><text x="868" y="596" class="label">Dashboard App</text><text x="868" y="619" class="subtext">Browser-delivered application</text><text x="812" y="645" class="subtext">URL supplied by the server</text>
+  <path d="M940 506 L940 556" fill="none" stroke="#64748B" stroke-width="2.2" marker-end="url(#arrowSlate)"/><text x="952" y="536" class="flow-label">renders</text>
+  <line x1="82" y1="743" x2="116" y2="743" stroke="#4E42ED" stroke-width="2.2"/><text x="126" y="747" class="flow-label">runtime data flow</text><line x1="278" y1="743" x2="312" y2="743" stroke="#94A3B8" stroke-width="1.8" stroke-dasharray="6 5"/><text x="322" y="747" class="flow-label">process supervision</text>
+</svg>
