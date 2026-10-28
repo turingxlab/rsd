@@ -166,6 +166,7 @@ impl ProcessManager {
         let launcher = &process.launcher;
         let child = Command::new(&launcher.path)
             .arg(&application.url)
+            .args(default_browser_args(&launcher.launcher_id))
             .args(&application.args)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -244,6 +245,27 @@ impl Drop for ProcessManager {
     }
 }
 
+/// 浏览器默认参数，用于无人值守启动浏览器的核心参数
+fn default_browser_args(launcher_id: &str) -> Vec<String> {
+    vec![
+        // 跳过首次运行检查（跳过欢迎页、默认浏览器设置引导等）
+        "--no-first-run".to_string(),
+        // 禁止检查并提示“将 Chrome 设为默认浏览器”
+        "--no-default-browser-check".to_string(),
+        // 隐藏崩溃恢复提示气泡（防止异常退出后弹出“恢复页面”窗口）
+        "--hide-crash-restore-bubble".to_string(),
+        // 使用独立 profile 路径，使 rsd 启动的浏览器实例不受用户已打开的实例影响
+        format!(
+            "--user-data-dir={}",
+            dirs::data_local_dir()
+                .expect("无法获取本地数据目录")
+                .join(env!("CARGO_PKG_NAME"))
+                .join(format!("browser-profile-{}", launcher_id))
+                .display()
+        ),
+    ]
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
@@ -263,6 +285,7 @@ mod tests {
             },
             Launcher {
                 launcher_id: "sleep".to_owned(),
+                launcher_name: "sleep".to_owned(),
                 path: "/bin/sleep".to_owned(),
                 version: String::new(),
             },

@@ -89,6 +89,7 @@ pub struct AppConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Launcher {
     pub launcher_id: String,
+    pub launcher_name: String,
     pub path: String,
     pub version: String,
 }
