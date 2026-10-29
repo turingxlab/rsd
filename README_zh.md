@@ -230,6 +230,7 @@ wss://rsd.example.com:443/ws/rsd/cmd
     "launchers": [
       {
         "launcher_id": "chromium",
+        "launcher_name": "Chromium",
         "path": "/usr/bin/chromium",
         "version": "1.0.0"
       }
@@ -242,8 +243,7 @@ wss://rsd.example.com:443/ws/rsd/cmd
         "version": "1.0.0",
         "url": "http://127.0.0.1:8081/dashboard",
         "args": [
-          "--kiosk",
-          "--hide-crash-restore-bubble"
+          "--kiosk"
         ],
         "launcher_id": "chromium",
         "active": true
@@ -267,6 +267,7 @@ wss://rsd.example.com:443/ws/rsd/cmd
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `launcher_id` | string | 启动器唯一标识，用于与应用关联 |
+| `launcher_name` | string | 启动器名称 |
 | `path` | string | 启动器可执行文件路径 |
 | `version` | string | 启动器版本 |
 
@@ -288,7 +289,6 @@ wss://rsd.example.com:443/ws/rsd/cmd
 示例中的 `args` 使用了以下 Chromium 参数：
 
 - `--kiosk`：以全屏模式启动浏览器，适合无人值守大屏展示。
-- `--hide-crash-restore-bubble`：浏览器异常退出或进程被强制终止后，下次启动时抑制恢复上次会话的提示气泡。
 
 示例中的 `/usr/bin/chromium` 是 Linux 常见路径，实际部署时应按操作系统和 Chromium 安装位置调整 `launcher.path`。
 

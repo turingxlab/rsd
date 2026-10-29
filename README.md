@@ -230,6 +230,7 @@ The `data` field of an `apps` message corresponds to the `AppConfig` structure:
     "launchers": [
       {
         "launcher_id": "chromium",
+        "launcher_name": "Chromium",
         "path": "/usr/bin/chromium",
         "version": "1.0.0"
       }
@@ -242,8 +243,7 @@ The `data` field of an `apps` message corresponds to the `AppConfig` structure:
         "version": "1.0.0",
         "url": "http://127.0.0.1:8081/dashboard",
         "args": [
-          "--kiosk",
-          "--hide-crash-restore-bubble"
+          "--kiosk"
         ],
         "launcher_id": "chromium",
         "active": true
@@ -267,6 +267,7 @@ All fields below are required and cannot be omitted from the JSON. `launchers` a
 | Field | Type | Description |
 | --- | --- | --- |
 | `launcher_id` | string | Unique launcher identifier used to associate it with applications |
+| `launcher_name` | string | Launcher name |
 | `path` | string | Path to the launcher executable |
 | `version` | string | Launcher version |
 
@@ -288,7 +289,6 @@ All fields below are required and cannot be omitted from the JSON. `launchers` a
 The `args` in the example use the following Chromium arguments:
 
 - `--kiosk`: Launches the browser in full-screen kiosk mode, suitable for unattended dashboard displays.
-- `--hide-crash-restore-bubble`: Suppresses the restore-session prompt on the next launch after the browser exits unexpectedly or its process is forcefully terminated.
 
 The `/usr/bin/chromium` path in the example is a common Linux path. In an actual deployment, adjust `launcher.path` for the operating system and Chromium installation location.
 
