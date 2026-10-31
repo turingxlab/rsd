@@ -16,6 +16,7 @@ mod args;
 mod banner;
 mod config;
 mod device;
+mod logging;
 mod network;
 mod process;
 mod update;
@@ -26,18 +27,17 @@ use crate::network::protocol::{AppConfig, Application, Launcher, WsMessage};
 use crate::network::websocket::{WebSocketClient, WsCmd, start_heartbeat};
 use crate::process::{APP_CHECK_INTERVAL, ProcessManager};
 use anyhow::Context;
-use tracing_subscriber::fmt::time::LocalTime;
 
 /// 启动 rsd 主程序
 pub async fn run() -> anyhow::Result<()> {
-    let (_, rsd_config) = bootstrap()?;
+    let (_, rsd_config, mut logging) = bootstrap()?;
 
     // 启动早期计算设备信息（declare 上报用）；所有标识来源缺失时直接启动失败
     let device_info = device::device_info()?;
 
     // 输出启动信息
-    banner::print_banner();
-    tracing::info!("Application running.");
+    banner::print_banner(&mut logging).context("Failed to write startup banner")?;
+    tracing::info!("Started rsd (PID {})", std::process::id());
 
     // 初始化 WebSocket 连接（后台自动重连），得到可复用的发送/接收出口
     let ws_client = WebSocketClient::new(&rsd_config, &device_info);
@@ -104,7 +104,10 @@ pub async fn run() -> anyhow::Result<()> {
                 }
             } => {
                 update_rx = None;
-                if let Err(error) = update_manager.handle_result(result.expect("update result must be present"), &mut process_manager) {
+                if let Err(error) = update_manager.handle_result(result.expect("update result must be present"), &mut process_manager, || {
+                    tracing::info!("Stopped rsd");
+                    logging.shutdown();
+                }) {
                     break Err(error);
                 }
             },
@@ -123,11 +126,13 @@ pub async fn run() -> anyhow::Result<()> {
         tracing::warn!(%error, "Failed to stop applications");
     }
 
+    tracing::info!("Stopped rsd");
+
     signal_result?;
     Ok(())
 }
 
-fn bootstrap() -> anyhow::Result<(Args, RsdConfig)> {
+fn bootstrap() -> anyhow::Result<(Args, RsdConfig, logging::Logging)> {
     // 尽早解析启动参数：--help / --version / 非法参数由 clap 直接输出并退出（0 或 2），
     // 避免帮助与错误信息被启动横幅和日志输出干扰。
     let args = args::Args::parse_args();
@@ -135,22 +140,9 @@ fn bootstrap() -> anyhow::Result<(Args, RsdConfig)> {
     // 加载配置文件（-c 显式指定优先，否则回退到可执行文件同目录下的 rsd.toml）
     let rsd_config = RsdConfig::load_from_file(args.config()?)?;
 
-    // 初始化日志工具
-    let timer = LocalTime::new(
-        time::format_description::parse_borrowed::<3>(
-            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:3]",
-        )
-        .expect("Invalid time format"),
-    );
-    // 过滤器优先级：RUST_LOG（有效时）> rsd.toml [logging].level > 内置默认 info
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&rsd_config.logging.level));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_timer(timer)
-        .init();
+    let logging = logging::init(&rsd_config.logging)?;
 
-    Ok((args, rsd_config))
+    Ok((args, rsd_config, logging))
 }
 
 fn parse_active_app(msg: WsMessage) -> anyhow::Result<Option<(Application, Launcher)>> {

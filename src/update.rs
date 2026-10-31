@@ -95,6 +95,7 @@ impl UpdateManager {
         &self,
         result: std::result::Result<UpdateResult, oneshot::error::RecvError>,
         process_manager: &mut ProcessManager,
+        before_restart: impl FnOnce(),
     ) -> Result<()> {
         // 结果被主循环消费前保持锁定，防止新任务覆盖尚未处理的 receiver。
         self.updating.store(false, Ordering::Release);
@@ -115,6 +116,8 @@ impl UpdateManager {
                 if let Err(error) = process_manager.shutdown() {
                     tracing::warn!(%error, "Failed to stop applications before restart");
                 }
+                // restart 在 Unix 上直接替换进程，不会运行析构函数。
+                before_restart();
                 match self_update::restart::restart() {
                     Ok(never) => match never {},
                     Err(error) => {
@@ -346,12 +349,18 @@ mod tests {
         let result = receiver.await;
         assert!(matches!(&result, Ok(Ok(status)) if !status.is_updated()));
         assert!(manager.dispatch(message()).is_none());
-        manager.handle_result(result, &mut processes).unwrap();
+        manager
+            .handle_result(result, &mut processes, || {})
+            .unwrap();
 
         let receiver = manager.dispatch(message()).expect("retry after result");
         let _ = receiver.await;
         manager
-            .handle_result(Ok(Err(anyhow::anyhow!("update failed"))), &mut processes)
+            .handle_result(
+                Ok(Err(anyhow::anyhow!("update failed"))),
+                &mut processes,
+                || {},
+            )
             .unwrap();
         assert!(!manager.updating.load(Ordering::Acquire));
 
@@ -360,13 +369,13 @@ mod tests {
         let (sender, receiver) = oneshot::channel::<UpdateResult>();
         drop(sender);
         manager
-            .handle_result(receiver.await, &mut processes)
+            .handle_result(receiver.await, &mut processes, || {})
             .unwrap();
         let receiver = manager
             .dispatch(message())
             .expect("retry after closed channel");
         manager
-            .handle_result(receiver.await, &mut processes)
+            .handle_result(receiver.await, &mut processes, || {})
             .unwrap();
     }
 

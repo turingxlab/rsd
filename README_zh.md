@@ -66,20 +66,29 @@ heartbeat_interval_sec = 30
 
 [logging]
 level = "info"
+# output = "file"
+# directory = "logs"
+# rotation = "daily"
+# max_log_files = 7
 ```
 
 主要配置项：
 
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `server.addr` | 必填 | 服务端主机名或 IP |
-| `server.tls` | `true` | `true` 使用 `wss`，`false` 使用 `ws` |
-| `server.port` | `443` / `80` | TLS 开启时默认 443，关闭时默认 80 |
-| `websocket.path` | `/device/rsd/cmd` | WebSocket 路径 |
-| `websocket.reconnect_interval_sec` | `30` | 重连间隔，单位为秒 |
-| `websocket.heartbeat_enabled` | `true` | 是否发送心跳 |
-| `websocket.heartbeat_interval_sec` | `30` | 心跳间隔，单位为秒 |
-| `logging.level` | `info` | 日志级别 |
+| 配置项 | 默认值 | 说明                                                            |
+| --- | --- |---------------------------------------------------------------|
+| `server.addr` | 必填 | 服务端主机名或 IP                                                    |
+| `server.tls` | `true` | `true` 使用 `wss`，`false` 使用 `ws`                               |
+| `server.port` | `443` / `80` | TLS 开启时默认 443，关闭时默认 80                                        |
+| `websocket.path` | `/device/rsd/cmd` | WebSocket 路径                                                  |
+| `websocket.reconnect_interval_sec` | `30` | 重连间隔，单位为秒                                                     |
+| `websocket.heartbeat_enabled` | `true` | 是否发送心跳                                                        |
+| `websocket.heartbeat_interval_sec` | `30` | 心跳间隔，单位为秒                                                     |
+| `logging.level` | `info` | 日志级别，`RUST_LOG` 环境变量优先                                        |
+| `logging.output` | `console` | 输出方式：`console` 输出到终端，`file` 仅写文件                              |
+| `logging.directory` | 用户主目录下的 `.rsd/logs` | 文件日志目录，可自定义；相对路径基于进程工作目录                                      |
+| `logging.rotation` | `never` | 滚动周期：`never`、`minutely`、`hourly`、`daily`、`weekly`（每周日 UTC 零点） |
+| `logging.max_log_files` | 未配置 | 最多保留的日志文件数量（含当前文件），必须为正整数；省略时不清理                              |
+
 
 本地调试连接示例：
 

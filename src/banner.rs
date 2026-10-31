@@ -22,9 +22,38 @@ const BANNER: &str = r#"
 ╚═╝  ╚═╝╚══════╝╚═════╝
 "#;
 
-/// 输出启动横幅到 stdout（不受日志级别过滤影响，始终可见）。
-pub fn print_banner() {
-    println!("{}", BANNER);
-    println!("rsd v{}", env!("CARGO_PKG_VERSION"));
-    println!();
+/// 原样输出启动横幅，不经过日志级别过滤。
+pub fn print_banner(writer: &mut impl std::io::Write) -> std::io::Result<()> {
+    // 一次提交完整横幅，避免后台写入时与其他日志交错。
+    writer.write_all(format!("{}\nrsd v{}\n\n", BANNER, env!("CARGO_PKG_VERSION")).as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preserves_banner_version_and_spacing() {
+        let mut output = Vec::new();
+        print_banner(&mut output).unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("{BANNER}\nrsd v{}\n\n", env!("CARGO_PKG_VERSION"))
+        );
+    }
+
+    #[test]
+    fn propagates_write_errors() {
+        struct FailingWriter;
+        impl std::io::Write for FailingWriter {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("write failed"))
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        assert!(print_banner(&mut FailingWriter).is_err());
+    }
 }

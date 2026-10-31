@@ -11,3 +11,12 @@ heartbeat_interval_sec = 30
 
 [logging]
 level = "debug"
+# console (default) or file
+# output = "file"
+# File logs default to .rsd/logs under the user's home directory; override below
+# Relative paths are based on the process working directory
+# directory = "logs"
+# never (default), minutely, hourly, daily, or weekly; rotation uses UTC
+# rotation = "daily"
+# Maximum number of retained log files; omit to disable automatic cleanup
+# max_log_files = 7

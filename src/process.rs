@@ -166,7 +166,7 @@ impl ProcessManager {
         let launcher = &process.launcher;
         let child = Command::new(&launcher.path)
             .arg(&application.url)
-            .args(default_browser_args(&launcher.launcher_id))
+            .args(default_browser_args(&launcher.launcher_id)?)
             .args(&application.args)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -246,8 +246,16 @@ impl Drop for ProcessManager {
 }
 
 /// 浏览器默认参数，用于无人值守启动浏览器的核心参数
-fn default_browser_args(launcher_id: &str) -> Vec<String> {
-    vec![
+fn default_browser_args(launcher_id: &str) -> Result<Vec<String>> {
+    browser_args_with_home(launcher_id, dirs::home_dir())
+}
+
+fn browser_args_with_home(
+    launcher_id: &str,
+    home_dir: Option<std::path::PathBuf>,
+) -> Result<Vec<String>> {
+    let home = home_dir.context("Failed to resolve home directory for browser profile")?;
+    Ok(vec![
         // 跳过首次运行检查（跳过欢迎页、默认浏览器设置引导等）
         "--no-first-run".to_string(),
         // 禁止检查并提示“将 Chrome 设为默认浏览器”
@@ -257,13 +265,29 @@ fn default_browser_args(launcher_id: &str) -> Vec<String> {
         // 使用独立 profile 路径，使 rsd 启动的浏览器实例不受用户已打开的实例影响
         format!(
             "--user-data-dir={}",
-            dirs::data_local_dir()
-                .expect("无法获取本地数据目录")
-                .join(env!("CARGO_PKG_NAME"))
+            home.join(".rsd")
                 .join(format!("browser-profile-{}", launcher_id))
                 .display()
         ),
-    ]
+    ])
+}
+
+#[cfg(test)]
+mod browser_args_tests {
+    use super::*;
+
+    #[test]
+    fn profile_uses_home_directory_and_launcher_id() {
+        let home = std::env::temp_dir().join("rsd-test-home");
+        for launcher_id in ["chrome", "edge"] {
+            let args = browser_args_with_home(launcher_id, Some(home.clone())).unwrap();
+            let profile = home
+                .join(".rsd")
+                .join(format!("browser-profile-{launcher_id}"));
+            assert!(args.contains(&format!("--user-data-dir={}", profile.display())));
+        }
+        assert!(browser_args_with_home("chrome", None).is_err());
+    }
 }
 
 #[cfg(all(test, unix))]

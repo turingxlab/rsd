@@ -66,6 +66,10 @@ heartbeat_interval_sec = 30
 
 [logging]
 level = "info"
+# output = "file"
+# directory = "logs"
+# rotation = "daily"
+# max_log_files = 7
 ```
 
 Main configuration options:
@@ -79,7 +83,11 @@ Main configuration options:
 | `websocket.reconnect_interval_sec` | `30` | Reconnection interval in seconds |
 | `websocket.heartbeat_enabled` | `true` | Whether to send heartbeats |
 | `websocket.heartbeat_interval_sec` | `30` | Heartbeat interval in seconds |
-| `logging.level` | `info` | Log level |
+| `logging.level` | `info` | Log level; the `RUST_LOG` environment variable takes precedence |
+| `logging.output` | `console` | Output destination: `console` for terminal logs, or `file` for file logs only |
+| `logging.directory` | `.rsd/logs` under the user's home directory | Optional custom log directory; relative paths use the process working directory |
+| `logging.rotation` | `never` | Rotation period: `never`, `minutely`, `hourly`, `daily`, or `weekly` (Sunday at midnight UTC) |
+| `logging.max_log_files` | Unset | Maximum number of retained log files, including the current file; must be positive; omitted means no automatic cleanup |
 
 Local debugging connection example:
 

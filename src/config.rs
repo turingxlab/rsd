@@ -15,6 +15,7 @@
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::Path;
 
 /// tls 省略时的默认值
@@ -100,12 +101,57 @@ pub struct LoggingConfig {
     /// 日志过滤指令：单个等级名（debug/info/warn/error/trace），
     /// 或完整 EnvFilter 指令（如 "rsd=debug,tokio=info"）
     pub level: String,
+    pub output: LogOutput,
+    /// 日志目录；相对路径基于进程工作目录。
+    #[serde(deserialize_with = "deserialize_log_directory")]
+    pub directory: Option<String>,
+    pub rotation: LogRotation,
+    pub max_log_files: Option<NonZeroUsize>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogOutput {
+    #[default]
+    Console,
+    File,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogRotation {
+    Minutely,
+    Hourly,
+    Daily,
+    Weekly,
+    #[default]
+    Never,
+}
+
+fn deserialize_log_directory<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let directory = Option::<String>::deserialize(deserializer)?;
+    if directory
+        .as_ref()
+        .is_some_and(|path| path.trim().is_empty())
+    {
+        return Err(serde::de::Error::custom(
+            "logging.directory must not be empty",
+        ));
+    }
+    Ok(directory)
 }
 
 impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
             level: DEFAULT_LOG_LEVEL.to_string(),
+            output: LogOutput::Console,
+            directory: None,
+            rotation: LogRotation::Never,
+            max_log_files: None,
         }
     }
 }
@@ -292,6 +338,7 @@ mod tests {
         .expect("missing [logging] table should parse");
 
         assert_eq!(config.logging.level, DEFAULT_LOG_LEVEL);
+        assert_eq!(config.logging, LoggingConfig::default());
     }
 
     #[test]
@@ -314,5 +361,62 @@ mod tests {
     fn rejects_missing_addr() {
         assert!(parse("[server]\nport = 443\n").is_err());
         assert!(parse("[websocket]\npath = \"/x\"\n").is_err());
+    }
+
+    #[test]
+    fn parses_file_logging_and_all_rotations() {
+        for (name, rotation) in [
+            ("never", LogRotation::Never),
+            ("minutely", LogRotation::Minutely),
+            ("hourly", LogRotation::Hourly),
+            ("daily", LogRotation::Daily),
+            ("weekly", LogRotation::Weekly),
+        ] {
+            let config: LoggingConfig = toml::from_str(&format!(
+                "output = 'file'\ndirectory = 'logs'\nrotation = '{name}'\nmax_log_files = 7"
+            ))
+            .unwrap();
+            assert_eq!(config.output, LogOutput::File);
+            assert_eq!(config.directory.as_deref(), Some("logs"));
+            assert_eq!(config.rotation, rotation);
+            assert_eq!(config.max_log_files.unwrap().get(), 7);
+            assert_eq!(config.level, DEFAULT_LOG_LEVEL);
+            let serialized = toml::to_string(&config).unwrap();
+            let value: toml::Value = toml::from_str(&serialized).unwrap();
+            assert_eq!(value["rotation"].as_str(), Some(name));
+            assert_eq!(
+                toml::from_str::<LoggingConfig>(&serialized).unwrap(),
+                config
+            );
+        }
+        let config: LoggingConfig = toml::from_str("output = 'file'").unwrap();
+        assert_eq!(config.directory, None);
+        assert_eq!(config.rotation, LogRotation::Never);
+        assert_eq!(config.max_log_files, None);
+    }
+
+    #[test]
+    fn rejects_invalid_file_logging_options() {
+        for content in [
+            "directory = ''",
+            "directory = '   '",
+            "output = 'both'",
+            "rotation = 'monthly'",
+            "max_log_files = 0",
+            "max_log_files = -1",
+        ] {
+            assert!(
+                toml::from_str::<LoggingConfig>(content).is_err(),
+                "{content}"
+            );
+        }
+    }
+
+    #[test]
+    fn defaults_to_console_even_with_directory_override() {
+        let config: LoggingConfig = toml::from_str("directory = 'logs'").unwrap();
+        assert_eq!(config.output, LogOutput::Console);
+        let config: LoggingConfig = toml::from_str("output = 'console'").unwrap();
+        assert_eq!(config, LoggingConfig::default());
     }
 }
