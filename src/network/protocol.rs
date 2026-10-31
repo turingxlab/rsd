@@ -24,6 +24,7 @@ pub enum WsCmd {
     Pong,
     Config,
     Apps,
+    Update,
 }
 
 /// 一条 ws 消息，统一结构：cmd + timestamp + 可选 data。
@@ -34,6 +35,7 @@ pub enum WsCmd {
 /// - `WsCmd::Pong`：服务端回应心跳
 /// - `WsCmd::Config`：服务端下发配置（data 为配置内容）
 /// - `WsCmd::Apps`：服务端下发应用配置（data 为启动器与应用清单）
+/// - `WsCmd::Update`：服务端下发自更新信息（data 为版本、下载地址和 SHA-256）
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WsMessage {
     /// 消息类型
@@ -74,6 +76,24 @@ pub struct DeviceInfo {
     pub ip: String,
     /// 设备版本号
     pub version: String,
+    /// 操作系统名称，取 Rust 标准库的 `std::env::consts::OS`
+    pub os: String,
+    /// CPU 架构名称，取 Rust 标准库的 `std::env::consts::ARCH`
+    pub arch: String,
+}
+
+/// `WsCmd::Update` 消息类型的 `data` 结构。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateInfo {
+    /// 目标版本，必须是不带 `v` 前缀的 semver 字符串
+    pub version: String,
+    /// 更新包对应的 Rust target 三元组，例如 `aarch64-apple-darwin`
+    pub target: String,
+    /// 当前平台裸可执行文件的下载地址
+    pub url: String,
+    /// 下载文件的 SHA-256，64 位十六进制字符串
+    pub sha256: String,
 }
 
 /// 应用配置：服务端下发的启动器与应用清单。
@@ -135,6 +155,10 @@ mod tests {
             r#""config""#
         );
         assert_eq!(serde_json::to_string(&WsCmd::Apps).unwrap(), r#""apps""#);
+        assert_eq!(
+            serde_json::to_string(&WsCmd::Update).unwrap(),
+            r#""update""#
+        );
     }
 
     #[test]

@@ -30,6 +30,7 @@
 - **稳定连接**：支持自动重连和周期心跳。
 - **远程启动应用**：接收服务端下发的应用配置，启动指定的浏览器应用。
 - **进程守护**：监测应用运行状态，应用退出后自动重启。
+- **自更新**：接收服务端下发的版本信息，校验后替换自身并自动重启。
 - **跨平台运行**：支持 Windows、macOS 和 Linux。
 
 如果应用进程意外退出，`rsd` 最多重试启动 5 次；稳定运行 60 秒后，重试次数会清零。
@@ -44,19 +45,6 @@
 rsd         # Windows 下为 rsd.exe
 rsd.toml
 LICENSE
-```
-
-也可以从源码构建：
-
-```bash
-cargo build --release
-```
-
-构建产物位于：
-
-```text
-target/release/rsd
-target/release/rsd.toml
 ```
 
 ### 配置文件
@@ -130,8 +118,6 @@ tls = false
 
 启动后会连接服务端。按 `Ctrl+C` 退出时，`rsd` 会停止当前托管的应用。
 
-生产环境建议将 `rsd` 注册为系统服务（例如 Linux 的 systemd、Windows 的服务），以便开机自启动，并在进程退出时由服务管理器自动拉起。
-
 ## 服务端对接说明
 
 ### 连接地址
@@ -175,6 +161,7 @@ wss://rsd.example.com:443/ws/rsd/cmd
 | 服务端 → rsd | `pong` | 无 | 心跳响应，客户端仅记录调试日志 |
 | 服务端 → rsd | `apps` | Apps 配置 | 下发启动器和应用清单 |
 | 服务端 → rsd | `config` | 任意 JSON | 当前仅记录调试日志，不会修改运行配置 |
+| 服务端 → rsd | `update` | 更新信息 | 下载并校验新版本，替换后自动重启 |
 
 连接成功后，`rsd` 发送设备声明消息：
 
@@ -185,7 +172,9 @@ wss://rsd.example.com:443/ws/rsd/cmd
   "data": {
     "device_id": "0123456789ABCDEF",
     "ip": "192.168.1.10",
-    "version": "0.1.0"
+    "version": "0.1.1",
+    "os": "linux",
+    "arch": "x86_64"
   }
 }
 ```
@@ -195,6 +184,8 @@ wss://rsd.example.com:443/ws/rsd/cmd
 | `device_id` | string | 设备唯一标识，由原始硬件或系统标识计算得到，共 16 位大写十六进制字符 |
 | `ip` | string | 本机 IP 地址，探测失败时为 `127.0.0.1` |
 | `version` | string | `rsd` 程序版本 |
+| `os` | string | 操作系统名称，取自 Rust 的 `std::env::consts::OS` |
+| `arch` | string | CPU 架构名称，取自 Rust 的 `std::env::consts::ARCH` |
 
 心跳消息不携带 `data`：
 
@@ -213,6 +204,23 @@ wss://rsd.example.com:443/ws/rsd/cmd
   "timestamp": 1792921844000
 }
 ```
+
+服务端可发送自更新消息。`url` 必须指向当前操作系统的裸可执行文件，`sha256` 为 64 位十六进制摘要：
+
+```json
+{
+  "cmd": "update",
+  "timestamp": 1792921844000,
+  "data": {
+    "version": "0.2.0",
+    "target": "x86_64-unknown-linux-gnu",
+    "url": "https://example.com/rsd-linux-x86_64",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}
+```
+
+客户端会先将 `target` 与自身 Rust target 三元组进行严格比较；不匹配时只记录日志，不下载更新。客户端仅在目标版本高于当前版本时下载。下载文件通过 SHA-256 校验后才会替换当前可执行文件；成功后停止托管应用并自动重启到新版本。下载、校验或替换失败时记录错误并继续运行旧版本。服务端应结合 `declare` 中的 `os`、`arch` 选择正确的 target 和下载地址。
 
 服务端应发送可解析的 JSON 文本帧。未知 `cmd`、缺少必填 `timestamp` 或无法解析的消息会被客户端忽略并记录警告。
 

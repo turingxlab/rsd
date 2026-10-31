@@ -30,6 +30,7 @@ It maintains a WebSocket connection to the server, reports device information, a
 - **Stable connection**: Supports automatic reconnection and periodic heartbeats.
 - **Remote application launch**: Receives application configuration from the server and starts the specified browser application.
 - **Process supervision**: Monitors application status and restarts the application after it exits.
+- **Self-update**: Receives version information from the server, verifies the new binary, replaces itself, and restarts.
 - **Cross-platform operation**: Supports Windows, macOS, and Linux.
 
 If the application process exits unexpectedly, `rsd` retries startup up to 5 times. The retry count is reset after the application runs stably for 60 seconds.
@@ -44,19 +45,6 @@ Download the archive for your platform from [GitHub Releases](https://github.com
 rsd         # rsd.exe on Windows
 rsd.toml
 LICENSE
-```
-
-You can also build from source:
-
-```bash
-cargo build --release
-```
-
-The build output is located at:
-
-```text
-target/release/rsd
-target/release/rsd.toml
 ```
 
 ### Configuration File
@@ -130,8 +118,6 @@ To specify another configuration file:
 
 After starting, `rsd` connects to the server. Pressing `Ctrl+C` stops the currently managed application before `rsd` exits.
 
-For production deployments, run `rsd` as a system service (for example, systemd on Linux or a Windows Service), so it starts at boot and is restarted automatically if the process exits.
-
 ## Server Integration Guide
 
 ### Connection URL
@@ -175,6 +161,7 @@ The client and server exchange UTF-8 JSON through WebSocket text frames. All mes
 | server → rsd | `pong` | None | Heartbeat response; the client only writes a debug log |
 | server → rsd | `apps` | Apps configuration | Delivers launchers and the application list |
 | server → rsd | `config` | Arbitrary JSON | Currently only writes a debug log and does not change runtime configuration |
+| server → rsd | `update` | Update information | Downloads and verifies a new version, then replaces and restarts |
 
 After connecting, `rsd` sends a device declaration message:
 
@@ -185,7 +172,9 @@ After connecting, `rsd` sends a device declaration message:
   "data": {
     "device_id": "0123456789ABCDEF",
     "ip": "192.168.1.10",
-    "version": "0.1.0"
+    "version": "0.1.1",
+    "os": "linux",
+    "arch": "x86_64"
   }
 }
 ```
@@ -195,6 +184,8 @@ After connecting, `rsd` sends a device declaration message:
 | `device_id` | string | Unique device identifier derived from the original hardware or system identifier; 16 uppercase hexadecimal characters |
 | `ip` | string | Local IP address; `127.0.0.1` when detection fails |
 | `version` | string | `rsd` program version |
+| `os` | string | Operating-system name from `std::env::consts::OS` |
+| `arch` | string | CPU architecture from `std::env::consts::ARCH` |
 
 Heartbeat messages do not include `data`:
 
@@ -213,6 +204,23 @@ The server may respond with:
   "timestamp": 1792921844000
 }
 ```
+
+The server can send a self-update message. `url` must point to a raw executable for the current operating system, and `sha256` must contain a 64-character hexadecimal digest:
+
+```json
+{
+  "cmd": "update",
+  "timestamp": 1792921844000,
+  "data": {
+    "version": "0.2.0",
+    "target": "x86_64-unknown-linux-gnu",
+    "url": "https://example.com/rsd-linux-x86_64",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}
+```
+
+The client first compares `target` with its own Rust target triple and ignores mismatched updates without downloading them. It downloads only when the target version is newer than the running version. The executable is replaced only after its SHA-256 digest matches; after a successful update, managed applications are stopped and the process restarts into the new version. Download, verification, or replacement failures are logged while the old version keeps running. The server should use `os` and `arch` from `declare` to select the correct target and download URL.
 
 The server should send parseable JSON text frames. Messages with an unknown `cmd`, a missing required `timestamp`, or invalid JSON are ignored by the client and logged as warnings.
 

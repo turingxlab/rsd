@@ -18,6 +18,7 @@ mod config;
 mod device;
 mod network;
 mod process;
+mod update;
 
 use crate::args::Args;
 use crate::config::RsdConfig;
@@ -42,6 +43,8 @@ pub async fn run() -> anyhow::Result<()> {
     let ws_client = WebSocketClient::new(&rsd_config, &device_info);
     let handle = ws_client.connect();
     let mut process_manager = ProcessManager::default();
+    let update_manager = update::UpdateManager::new();
+    let mut update_rx: Option<update::UpdateReceiver> = None;
 
     // 启动心跳：复用同一条连接，定时发送 ping
     if rsd_config.websocket.heartbeat_enabled {
@@ -78,6 +81,11 @@ pub async fn run() -> anyhow::Result<()> {
                             tracing::error!("Failed to parse app config: {error:#}");
                         }
                     },
+                    WsCmd::Update => {
+                        if let Some(receiver) = update_manager.dispatch(msg) {
+                            update_rx = Some(receiver);
+                        }
+                    }
                     _ => {
                         if let Ok(text) = serde_json::to_string(&msg) {
                             tracing::debug!("Unknown msg: {}", text);
@@ -88,6 +96,17 @@ pub async fn run() -> anyhow::Result<()> {
                     tracing::warn!("Message listener lagged and skipped {skipped} messages");
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break Ok(()),
+            },
+            result = async {
+                match update_rx.as_mut() {
+                    Some(receiver) => Some(receiver.await),
+                    None => std::future::pending().await,
+                }
+            } => {
+                update_rx = None;
+                if let Err(error) = update_manager.handle_result(result.expect("update result must be present"), &mut process_manager) {
+                    break Err(error);
+                }
             },
             _ = check_interval.tick() => {
                 if let Err(error) = process_manager.check_and_restart() {

@@ -36,6 +36,8 @@ pub fn device_info() -> Result<DeviceInfo> {
         device_id: device_id_from(&raw),
         ip: local_ip(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
     })
 }
 
