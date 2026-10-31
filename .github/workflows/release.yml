@@ -21,11 +21,11 @@ jobs:
         include:
           - target: aarch64-apple-darwin
             platform: darwin-arm64
-            runner: macos-14
+            runner: macos-15
             binary: rsd
           - target: x86_64-apple-darwin
             platform: darwin-x86_64
-            runner: macos-14
+            runner: macos-15
             binary: rsd
           - target: aarch64-pc-windows-msvc
             platform: windows-arm64
