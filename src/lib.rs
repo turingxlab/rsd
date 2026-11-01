@@ -19,10 +19,12 @@ mod device;
 mod logging;
 mod network;
 mod process;
+mod screen;
 mod update;
 
 use crate::args::Args;
 use crate::config::RsdConfig;
+use crate::network::http::Api;
 use crate::network::protocol::{AppConfig, Application, Launcher, WsMessage};
 use crate::network::websocket::{WebSocketClient, WsCmd, start_heartbeat};
 use crate::process::{APP_CHECK_INTERVAL, ProcessManager};
@@ -31,6 +33,7 @@ use anyhow::Context;
 /// 启动 rsd 主程序
 pub async fn run() -> anyhow::Result<()> {
     let (_, rsd_config, mut logging) = bootstrap()?;
+    Api::init(&rsd_config)?;
 
     // 启动早期计算设备信息（declare 上报用）；所有标识来源缺失时直接启动失败
     let device_info = device::device_info()?;
@@ -45,6 +48,7 @@ pub async fn run() -> anyhow::Result<()> {
     let mut process_manager = ProcessManager::default();
     let update_manager = update::UpdateManager::new();
     let mut update_rx: Option<update::UpdateReceiver> = None;
+    let mut screenshot_task: Option<tokio::task::JoinHandle<anyhow::Result<()>>> = None;
 
     // 启动心跳：复用同一条连接，定时发送 ping
     if rsd_config.websocket.heartbeat_enabled {
@@ -86,6 +90,13 @@ pub async fn run() -> anyhow::Result<()> {
                             update_rx = Some(receiver);
                         }
                     }
+                    WsCmd::Screenshot => {
+                        if screenshot_task.is_some() {
+                            tracing::info!("Skipped screenshot command while upload is in progress");
+                        } else {
+                            screenshot_task = Some(tokio::spawn(screen::screenshot()));
+                        }
+                    },
                     _ => {
                         if let Ok(text) = serde_json::to_string(&msg) {
                             tracing::debug!("Unknown msg: {}", text);
@@ -111,6 +122,19 @@ pub async fn run() -> anyhow::Result<()> {
                     break Err(error);
                 }
             },
+            result = async {
+                match screenshot_task.as_mut() {
+                    Some(task) => task.await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                screenshot_task = None;
+                match result {
+                    Ok(Ok(())) => {},
+                    Ok(Err(error)) => tracing::error!("Failed to upload screenshots: {error:#}"),
+                    Err(error) => tracing::error!("Screenshot task failed: {error}"),
+                }
+            },
             _ = check_interval.tick() => {
                 if let Err(error) = process_manager.check_and_restart() {
                     tracing::error!("Failed to check application: {error:#}");
@@ -121,6 +145,10 @@ pub async fn run() -> anyhow::Result<()> {
             },
         }
     };
+
+    if let Some(task) = screenshot_task {
+        task.abort();
+    }
 
     if let Err(error) = process_manager.shutdown() {
         tracing::warn!(%error, "Failed to stop applications");

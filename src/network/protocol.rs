@@ -25,6 +25,7 @@ pub enum WsCmd {
     Config,
     Apps,
     Update,
+    Screenshot,
 }
 
 /// 一条 ws 消息，统一结构：cmd + timestamp + 可选 data。
@@ -36,6 +37,7 @@ pub enum WsCmd {
 /// - `WsCmd::Config`：服务端下发配置（data 为配置内容）
 /// - `WsCmd::Apps`：服务端下发应用配置（data 为启动器与应用清单）
 /// - `WsCmd::Update`：服务端下发自更新信息（data 为版本、下载地址和 SHA-256）
+/// - `WsCmd::Screenshot`：服务端下发截屏命令
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WsMessage {
     /// 消息类型
