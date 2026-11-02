@@ -30,6 +30,7 @@ It maintains a WebSocket connection to the server, reports device information, a
 - **Stable connection**: Supports automatic reconnection and periodic heartbeats.
 - **Remote application launch**: Receives application configuration from the server and starts the specified browser application.
 - **Process supervision**: Monitors application status and restarts the application after it exits.
+- **Remote screenshots**: Receives screenshot commands from the server, captures each display, and uploads the images to the server in PNG format.
 - **Self-update**: Receives version information from the server, verifies the new binary, replaces itself, and restarts.
 - **Cross-platform operation**: Supports Windows, macOS, and Linux.
 
@@ -315,3 +316,13 @@ The client selects the first application with `active = true` and looks up the c
 ```
 
 The launcher runs directly as a child process without a shell. If there is no active application, the client stops the currently managed application. If no launcher matches the active application's `launcher_id`, processing of the Apps configuration fails and the existing application process remains unchanged.
+
+## Screenshot Requirements
+
+| Platform | Requirements |
+| --- | --- |
+| Windows | Must run in an interactive desktop session with access to the displays. |
+| macOS | Requires macOS 14 or later and screen recording permission granted under System Settings → Privacy & Security → Screen Recording. |
+| Linux | Supports X11 only and requires access to the corresponding X server with appropriate permissions. Wayland sessions are unsupported, including applications running through XWayland. |
+
+Screenshots require available displays and a graphical session. Background environments without a graphical desktop do not meet these requirements.
