@@ -1,22 +1,70 @@
 use super::{Image, rgba_len};
 use anyhow::Context;
 use std::{
-    ffi::c_void,
     mem::{size_of, zeroed},
     ptr::{null, null_mut},
 };
 use windows_sys::Win32::{
     Foundation::{LPARAM, RECT},
     Graphics::Gdi::*,
-    UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
+    System::LibraryLoader::{GetModuleHandleA, GetProcAddress},
+    UI::HiDpi::{
+        DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE,
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    },
 };
 
-struct DpiGuard(*mut c_void);
+type SetThreadDpiAwarenessContextFn =
+    unsafe extern "system" fn(DPI_AWARENESS_CONTEXT) -> DPI_AWARENESS_CONTEXT;
+
+struct DpiGuard {
+    function: Option<SetThreadDpiAwarenessContextFn>,
+    previous: DPI_AWARENESS_CONTEXT,
+}
+
 impl Drop for DpiGuard {
     fn drop(&mut self) {
-        unsafe {
-            SetThreadDpiAwarenessContext(self.0);
+        if let Some(function) = self.function {
+            unsafe {
+                function(self.previous);
+            }
         }
+    }
+}
+
+fn set_dpi_awareness() -> anyhow::Result<DpiGuard> {
+    unsafe {
+        // GDI 代码已导入 user32.dll，借用模块句柄避免每次截图增加引用计数。
+        let module = GetModuleHandleA(c"user32.dll".as_ptr().cast());
+        if module.is_null() {
+            return Ok(DpiGuard {
+                function: None,
+                previous: null_mut(),
+            });
+        }
+        let Some(address) = GetProcAddress(module, c"SetThreadDpiAwarenessContext".as_ptr().cast())
+        else {
+            // 早期 Windows 10 没有线程 DPI API，继续使用进程默认行为。
+            return Ok(DpiGuard {
+                function: None,
+                previous: null_mut(),
+            });
+        };
+        let function: SetThreadDpiAwarenessContextFn = std::mem::transmute(address);
+        let mut previous = function(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        if previous.is_null() {
+            // 部分版本有线程 DPI API，但尚不支持 V2 上下文。
+            previous = function(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+        }
+        anyhow::ensure!(
+            !previous.is_null(),
+            "Failed to set screenshot DPI awareness: {}",
+            std::io::Error::last_os_error()
+        );
+        Ok(DpiGuard {
+            function: Some(function),
+            previous,
+        })
     }
 }
 
@@ -62,13 +110,7 @@ unsafe extern "system" fn collect_monitor(
 
 pub(super) fn capture(emit: &mut impl FnMut(Image) -> anyhow::Result<()>) -> anyhow::Result<()> {
     unsafe {
-        let previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        anyhow::ensure!(
-            !previous.is_null(),
-            "Failed to set screenshot DPI awareness: {}",
-            std::io::Error::last_os_error()
-        );
-        let _dpi = DpiGuard(previous);
+        let _dpi = set_dpi_awareness()?;
         let mut monitors = Vec::new();
         anyhow::ensure!(
             EnumDisplayMonitors(

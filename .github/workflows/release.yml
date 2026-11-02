@@ -35,11 +35,11 @@ jobs:
             platform: windows-x86_64
             runner: windows-2022
             binary: rsd.exe
-          - target: aarch64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-musl
             platform: linux-arm64
             runner: ubuntu-24.04-arm
             binary: rsd
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             platform: linux-x86_64
             runner: ubuntu-24.04
             binary: rsd
@@ -54,9 +54,57 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.target }}
 
+      - name: Install Zig
+        if: endsWith(matrix.target, '-unknown-linux-musl')
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.1
+
+      - name: Install cargo-zigbuild
+        if: endsWith(matrix.target, '-unknown-linux-musl')
+        shell: bash
+        run: cargo install cargo-zigbuild --version 0.20.1 --locked
+
       - name: Build
         shell: bash
-        run: cargo build --release --target "${{ matrix.target }}"
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.target }}" == *-unknown-linux-musl ]]; then
+            RUSTFLAGS="-C target-feature=+crt-static" cargo zigbuild --release --target "${{ matrix.target }}"
+          elif [[ "${{ matrix.target }}" == *-pc-windows-msvc ]]; then
+            RUSTFLAGS="-C target-feature=+crt-static" cargo build --release --target "${{ matrix.target }}"
+          else
+            MACOSX_DEPLOYMENT_TARGET=14.0 cargo build --release --target "${{ matrix.target }}"
+          fi
+
+      - name: Verify Linux binary is statically linked
+        if: endsWith(matrix.target, '-unknown-linux-musl')
+        shell: bash
+        run: |
+          set -euo pipefail
+          file "target/${{ matrix.target }}/release/rsd"
+          readelf -lW "target/${{ matrix.target }}/release/rsd" > program-headers.txt
+          readelf -dW "target/${{ matrix.target }}/release/rsd" > dynamic-section.txt
+          if grep -q 'INTERP' program-headers.txt || grep -q '(NEEDED)' dynamic-section.txt; then
+            echo "Linux binary is dynamically linked" >&2
+            exit 1
+          fi
+
+      - name: Verify Linux startup on older Ubuntu releases
+        if: endsWith(matrix.target, '-unknown-linux-musl')
+        shell: bash
+        run: |
+          set -euo pipefail
+          for version in 16.04 18.04; do
+            docker run --rm \
+              -v "$PWD/target/${{ matrix.target }}/release/rsd:/rsd:ro" \
+              "ubuntu:${version}" /rsd --version
+          done
+
+      - name: Verify Windows startup
+        if: endsWith(matrix.target, '-pc-windows-msvc')
+        shell: bash
+        run: '"target/${{ matrix.target }}/release/rsd.exe" --version'
 
       - name: Package archives
         shell: bash
