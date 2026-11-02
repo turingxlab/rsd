@@ -16,6 +16,7 @@ use crate::config::RsdConfig;
 use anyhow::Context;
 use reqwest::multipart::{Form, Part};
 use std::{
+    path::Path,
     sync::{LazyLock, OnceLock},
     time::Duration,
 };
@@ -71,16 +72,31 @@ impl Api {
         base_url
             .set_port(Some(config.server.port))
             .map_err(|_| anyhow::anyhow!("Failed to set API server port"))?;
+        base_url.set_path(&format!("{}/", config.http.path.trim_end_matches('/')));
         API.set(Self { base_url })
             .map_err(|_| anyhow::anyhow!("API is already initialized"))
     }
 
-    pub async fn upload_files(files: Vec<UploadFile>) -> anyhow::Result<String> {
+    pub async fn upload_screenshots(files: Vec<UploadFile>) -> anyhow::Result<String> {
         let api = API.get().context("API is not initialized")?;
-        api.upload(files).await
+        api.upload_screenshot_files(files).await
     }
 
-    async fn upload(&self, files: Vec<UploadFile>) -> anyhow::Result<String> {
+    pub async fn upload_logs(archive_path: &Path) -> anyhow::Result<String> {
+        let api = API.get().context("API is not initialized")?;
+        api.upload_log_archive(archive_path).await
+    }
+
+    async fn upload_log_archive(&self, archive_path: &Path) -> anyhow::Result<String> {
+        let part = Part::file(archive_path)
+            .await
+            .context("Failed to open log archive")?
+            .mime_str("application/gzip")
+            .context("Failed to set log archive content type")?;
+        self.upload("log", Form::new().part("files", part)).await
+    }
+
+    async fn upload_screenshot_files(&self, files: Vec<UploadFile>) -> anyhow::Result<String> {
         anyhow::ensure!(!files.is_empty(), "Upload files must not be empty");
         let mut form = Form::new();
         for file in files {
@@ -90,10 +106,14 @@ impl Api {
                 .context("Failed to set upload file content type")?;
             form = form.part("files", part);
         }
+        self.upload("screenshot", form).await
+    }
+
+    async fn upload(&self, path: &str, form: Form) -> anyhow::Result<String> {
         let url = self
             .base_url
-            .join("/device/rsd/screenshot")
-            .context("Failed to build screenshot upload URL")?;
+            .join(path)
+            .context("Failed to build upload URL")?;
         HTTP_CLIENT
             .post(url)
             .timeout(Duration::from_secs(60))
@@ -127,7 +147,11 @@ mod tests {
     async fn mock_server(status: &str) -> (Api, tokio::task::JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api = Api {
-            base_url: Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap(),
+            base_url: Url::parse(&format!(
+                "http://{}/device/rsd/",
+                listener.local_addr().unwrap()
+            ))
+            .unwrap(),
         };
         let response =
             format!("HTTP/1.1 {status}\r\nContent-Length: 7\r\nConnection: close\r\n\r\nsuccess");
@@ -165,10 +189,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn uploads_multiple_files_to_fixed_endpoint() {
+    async fn uploads_multiple_screenshots() {
         let (api, server) = mock_server("200 OK").await;
         let response = api
-            .upload(vec![
+            .upload_screenshot_files(vec![
                 file("screenshot-1.png", b"first-image"),
                 file("screenshot-2.png", b"second-image"),
             ])
@@ -195,10 +219,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn uploads_log_archive_to_custom_prefix() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("rsd-logs-123.tar.gz");
+        tokio::fs::write(&path, b"archive-content").await.unwrap();
+        let (mut api, server) = mock_server("200 OK").await;
+        api.base_url.set_path("/custom/api/");
+        assert_eq!(api.upload_log_archive(&path).await.unwrap(), "success");
+        let request = server.await.unwrap();
+        assert!(request.starts_with("POST /custom/api/log HTTP/1.1\r\n"));
+        assert!(request.contains("name=\"files\"; filename=\"rsd-logs-123.tar.gz\""));
+        assert!(request.contains("Content-Type: application/gzip\r\n\r\narchive-content"));
+    }
+
+    #[tokio::test]
     async fn rejects_http_errors() {
         let (api, server) = mock_server("500 Internal Server Error").await;
         assert!(
-            api.upload(vec![file("screenshot.png", b"image")])
+            api.upload_screenshot_files(vec![file("screenshot.png", b"image")])
                 .await
                 .is_err()
         );
@@ -211,11 +249,11 @@ mod tests {
         let api = Api {
             base_url: Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap(),
         };
-        let error = api.upload(Vec::new()).await.unwrap_err();
+        let error = api.upload_screenshot_files(Vec::new()).await.unwrap_err();
         assert_eq!(error.to_string(), "Upload files must not be empty");
         drop(listener);
         assert!(
-            api.upload(vec![file("screenshot.png", b"image")])
+            api.upload_screenshot_files(vec![file("screenshot.png", b"image")])
                 .await
                 .is_err()
         );

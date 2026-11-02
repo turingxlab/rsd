@@ -28,6 +28,8 @@ const DEFAULT_PLAIN_PORT: u16 = 80;
 /// 日志等级缺省（RUST_LOG 与 [logging].level 均未指定）时的默认值
 const DEFAULT_LOG_LEVEL: &str = "info";
 
+const DEFAULT_HTTP_PATH: &str = "/device/rsd";
+
 /// websocket.path 省略时的默认值
 const DEFAULT_WS_PATH: &str = "/device/rsd/cmd";
 /// websocket.reconnect_interval_sec 省略时的默认值
@@ -71,6 +73,38 @@ impl From<ServerConfigRaw> for ServerConfig {
             tls,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HttpConfig {
+    #[serde(deserialize_with = "deserialize_http_path")]
+    pub path: String,
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        Self {
+            path: DEFAULT_HTTP_PATH.to_string(),
+        }
+    }
+}
+
+fn deserialize_http_path<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let path = String::deserialize(deserializer)?;
+    if !path.starts_with('/')
+        || path.starts_with("//")
+        || path.contains(['?', '#', '\\'])
+        || path.chars().any(char::is_whitespace)
+    {
+        return Err(serde::de::Error::custom(
+            "HTTP path must be an absolute path without a host, query or fragment",
+        ));
+    }
+    Ok(path)
 }
 
 /// 结构体级 `#[serde(default)]`：表内字段可部分省略，缺失字段取 `Default`。
@@ -159,6 +193,8 @@ impl Default for LoggingConfig {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RsdConfig {
     pub server: ServerConfig,
+    #[serde(default)]
+    pub http: HttpConfig,
     /// 整个 `[websocket]` 表省略时取默认配置
     #[serde(default)]
     pub websocket: WebsocketConfig,
@@ -188,6 +224,28 @@ mod tests {
 
     fn parse(content: &str) -> anyhow::Result<RsdConfig> {
         Ok(toml::from_str(content)?)
+    }
+
+    #[test]
+    fn parses_http_defaults_and_custom_paths() {
+        let config = parse("[server]\naddr = 'localhost'").unwrap();
+        assert_eq!(config.http.path, "/device/rsd");
+        let config: HttpConfig = toml::from_str("").unwrap();
+        assert_eq!(config, HttpConfig::default());
+        for path in ["/custom/api", "/custom/api/", "/"] {
+            let config: HttpConfig = toml::from_str(&format!("path = '{path}'")).unwrap();
+            assert_eq!(config.path, path);
+        }
+        for path in [
+            "",
+            "relative",
+            "https://example.com",
+            "//example.com",
+            "/a?q=1",
+            "/a#b",
+        ] {
+            assert!(toml::from_str::<HttpConfig>(&format!("path = '{path}'")).is_err());
+        }
     }
 
     #[test]

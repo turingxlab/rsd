@@ -3,6 +3,10 @@ addr = "127.0.0.1"
 port = 8080
 tls = false
 
+[http]
+# API path prefix for screenshot and log uploads
+path = "/device/rsd"
+
 [websocket]
 path = "/ws/rsd/cmd"
 reconnect_interval_sec = 30

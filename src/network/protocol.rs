@@ -26,6 +26,7 @@ pub enum WsCmd {
     Apps,
     Update,
     Screenshot,
+    Log,
 }
 
 /// 一条 ws 消息，统一结构：cmd + timestamp + 可选 data。
@@ -38,6 +39,7 @@ pub enum WsCmd {
 /// - `WsCmd::Apps`：服务端下发应用配置（data 为启动器与应用清单）
 /// - `WsCmd::Update`：服务端下发自更新信息（data 为版本、下载地址和 SHA-256）
 /// - `WsCmd::Screenshot`：服务端下发截屏命令
+/// - `WsCmd::Log`：服务端下发日志打包上传命令
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WsMessage {
     /// 消息类型
@@ -146,6 +148,11 @@ mod tests {
 
     #[test]
     fn cmd_serializes_as_snake_case() {
+        assert_eq!(serde_json::to_string(&WsCmd::Log).unwrap(), r#""log""#);
+        assert_eq!(
+            serde_json::from_str::<WsCmd>(r#""log""#).unwrap(),
+            WsCmd::Log
+        );
         assert_eq!(
             serde_json::to_string(&WsCmd::Declare).unwrap(),
             r#""declare""#

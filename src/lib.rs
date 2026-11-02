@@ -19,15 +19,15 @@ mod device;
 mod logging;
 mod network;
 mod process;
+mod runtime;
 mod screen;
 mod update;
 
 use crate::args::Args;
 use crate::config::RsdConfig;
 use crate::network::http::Api;
-use crate::network::protocol::{AppConfig, Application, Launcher, WsMessage};
-use crate::network::websocket::{WebSocketClient, WsCmd, start_heartbeat};
-use crate::process::{APP_CHECK_INTERVAL, ProcessManager};
+use crate::network::websocket::{WebSocketClient, start_heartbeat};
+use crate::runtime::Runtime;
 use anyhow::Context;
 
 /// 启动 rsd 主程序
@@ -45,10 +45,6 @@ pub async fn run() -> anyhow::Result<()> {
     // 初始化 WebSocket 连接（后台自动重连），得到可复用的发送/接收出口
     let ws_client = WebSocketClient::new(&rsd_config, &device_info);
     let handle = ws_client.connect();
-    let mut process_manager = ProcessManager::default();
-    let update_manager = update::UpdateManager::new();
-    let mut update_rx: Option<update::UpdateReceiver> = None;
-    let mut screenshot_task: Option<tokio::task::JoinHandle<anyhow::Result<()>>> = None;
 
     // 启动心跳：复用同一条连接，定时发送 ping
     if rsd_config.websocket.heartbeat_enabled {
@@ -58,106 +54,10 @@ pub async fn run() -> anyhow::Result<()> {
         );
     }
 
-    // 监听服务端下发消息（如 pong 回应、Apps 配置），并定期检查 active 进程
-    let mut rx = handle.rx;
-    let mut check_interval = tokio::time::interval(APP_CHECK_INTERVAL);
-    check_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let shutdown_signal = tokio::signal::ctrl_c();
-    tokio::pin!(shutdown_signal);
-
-    let signal_result = loop {
-        tokio::select! {
-            msg = rx.recv() => match msg {
-                Ok(msg) => match &msg.cmd {
-                    WsCmd::Pong => tracing::debug!("Received pong"),
-                    WsCmd::Config => {
-                        if let Ok(text) = serde_json::to_string(&msg.data) {
-                            tracing::debug!("Received config: {}", text);
-                        }
-                    }
-                    WsCmd::Apps => match parse_active_app(msg) {
-                        Ok(selected) => {
-                            if let Err(error) = process_manager.apply_active_app(selected) {
-                                tracing::error!("Failed to apply app config: {error:#}");
-                            }
-                        }
-                        Err(error) => {
-                            tracing::error!("Failed to parse app config: {error:#}");
-                        }
-                    },
-                    WsCmd::Update => {
-                        if let Some(receiver) = update_manager.dispatch(msg) {
-                            update_rx = Some(receiver);
-                        }
-                    }
-                    WsCmd::Screenshot => {
-                        if screenshot_task.is_some() {
-                            tracing::info!("Skipped screenshot command while upload is in progress");
-                        } else {
-                            screenshot_task = Some(tokio::spawn(screen::screenshot()));
-                        }
-                    },
-                    _ => {
-                        if let Ok(text) = serde_json::to_string(&msg) {
-                            tracing::debug!("Unknown msg: {}", text);
-                        }
-                    }
-                },
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    tracing::warn!("Message listener lagged and skipped {skipped} messages");
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break Ok(()),
-            },
-            result = async {
-                match update_rx.as_mut() {
-                    Some(receiver) => Some(receiver.await),
-                    None => std::future::pending().await,
-                }
-            } => {
-                update_rx = None;
-                if let Err(error) = update_manager.handle_result(result.expect("update result must be present"), &mut process_manager, || {
-                    tracing::info!("Stopped rsd");
-                    logging.shutdown();
-                }) {
-                    break Err(error);
-                }
-            },
-            result = async {
-                match screenshot_task.as_mut() {
-                    Some(task) => task.await,
-                    None => std::future::pending().await,
-                }
-            } => {
-                screenshot_task = None;
-                match result {
-                    Ok(Ok(())) => {},
-                    Ok(Err(error)) => tracing::error!("Failed to upload screenshots: {error:#}"),
-                    Err(error) => tracing::error!("Screenshot task failed: {error}"),
-                }
-            },
-            _ = check_interval.tick() => {
-                if let Err(error) = process_manager.check_and_restart() {
-                    tracing::error!("Failed to check application: {error:#}");
-                }
-            },
-            result = &mut shutdown_signal => {
-                break result.context("Failed to listen for Ctrl-C");
-            },
-        }
-    };
-
-    if let Some(task) = screenshot_task {
-        task.abort();
-    }
-
-    if let Err(error) = process_manager.shutdown() {
-        tracing::warn!(%error, "Failed to stop applications");
-    }
-
-    tracing::info!("Stopped rsd");
-
-    signal_result?;
-    Ok(())
+    let mut runtime = Runtime::new(rsd_config.logging);
+    let result = runtime.run_loop(handle.rx, &mut logging).await;
+    runtime.shutdown().await;
+    result
 }
 
 fn bootstrap() -> anyhow::Result<(Args, RsdConfig, logging::Logging)> {
@@ -171,30 +71,4 @@ fn bootstrap() -> anyhow::Result<(Args, RsdConfig, logging::Logging)> {
     let logging = logging::init(&rsd_config.logging)?;
 
     Ok((args, rsd_config, logging))
-}
-
-fn parse_active_app(msg: WsMessage) -> anyhow::Result<Option<(Application, Launcher)>> {
-    let app_config: AppConfig = serde_json::from_value(msg.data.context("Apps data is missing")?)
-        .context("Failed to parse app config")?;
-
-    match toml::to_string_pretty(&app_config) {
-        Ok(text) => tracing::debug!("Received app config:\n{text}"),
-        Err(error) => tracing::warn!("Failed to format app config as TOML: {error:#}"),
-    }
-
-    let Some(application) = app_config.applications.iter().find(|app| app.active) else {
-        return Ok(None);
-    };
-    let launcher = app_config
-        .launchers
-        .iter()
-        .find(|launcher| launcher.launcher_id == application.launcher_id)
-        .with_context(|| {
-            format!(
-                "Launcher {} not found for application {}",
-                application.launcher_id, application.app_id
-            )
-        })?;
-
-    Ok(Some((application.clone(), launcher.clone())))
 }

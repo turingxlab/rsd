@@ -13,9 +13,15 @@
 // limitations under the License.
 
 use crate::config::{LogOutput, LogRotation, LoggingConfig};
+use crate::network::http::Api;
 use anyhow::Context;
-use std::io::{self, Write};
-use std::path::PathBuf;
+use flate2::{Compression, write::GzEncoder};
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use tracing_appender::non_blocking::{NonBlocking, NonBlockingBuilder, WorkerGuard};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::time::LocalTime;
@@ -132,11 +138,177 @@ fn log_directory(
     }
 }
 
+// 异步任务被取消后，阻塞打包任务在下一次读取时停止。
+struct ArchiveCancellation(Arc<AtomicBool>);
+
+impl Drop for ArchiveCancellation {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+struct ArchiveReader<'a> {
+    file: std::io::Take<std::fs::File>,
+    cancelled: &'a AtomicBool,
+}
+
+impl Read for ArchiveReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        check_archive_cancelled(self.cancelled)?;
+        self.file.read(buffer)
+    }
+}
+
+fn check_archive_cancelled(cancelled: &AtomicBool) -> io::Result<()> {
+    if cancelled.load(Ordering::Relaxed) {
+        return Err(io::Error::other("Log archive cancelled"));
+    }
+    Ok(())
+}
+
+pub(crate) async fn upload(config: LoggingConfig) -> anyhow::Result<()> {
+    let directory = log_directory(&config, dirs::home_dir)?;
+    let cancellation = ArchiveCancellation(Arc::new(AtomicBool::new(false)));
+    let cancelled = cancellation.0.clone();
+    let archive = tokio::task::spawn_blocking(move || create_archive(&directory, &cancelled))
+        .await
+        .context("Log archive task failed")??;
+    let Some((temporary, path)) = archive else {
+        tracing::info!("Skipped log upload: log directory is missing or has no files");
+        return Ok(());
+    };
+    // 临时目录必须保留到 HTTP 上传结束，取消或失败时同样自动清理。
+    Api::upload_logs(&path).await?;
+    drop(temporary);
+    tracing::info!("Uploaded log archive");
+    Ok(())
+}
+
+fn create_archive(
+    directory: &Path,
+    cancelled: &AtomicBool,
+) -> anyhow::Result<Option<(tempfile::TempDir, PathBuf)>> {
+    match std::fs::metadata(directory) {
+        Ok(metadata) => anyhow::ensure!(metadata.is_dir(), "Log path is not a directory"),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).context("Failed to inspect log directory"),
+    }
+    let temporary = tempfile::tempdir().context("Failed to create log archive directory")?;
+    let timestamp = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+    let path = temporary
+        .path()
+        .join(format!("rsd-logs-{timestamp}.tar.gz"));
+    let file = std::fs::File::create(&path).context("Failed to create log archive")?;
+    let mut archive = tar::Builder::new(GzEncoder::new(file, Compression::default()));
+    let count = append_log_files(
+        &mut archive,
+        directory,
+        directory,
+        temporary.path(),
+        cancelled,
+    )?;
+    archive
+        .into_inner()
+        .context("Failed to finish log tar archive")?
+        .finish()
+        .context("Failed to finish log gzip archive")?;
+    if count == 0 {
+        return Ok(None);
+    }
+    Ok(Some((temporary, path)))
+}
+
+fn append_log_files(
+    archive: &mut tar::Builder<GzEncoder<std::fs::File>>,
+    root: &Path,
+    directory: &Path,
+    temporary: &Path,
+    cancelled: &AtomicBool,
+) -> anyhow::Result<usize> {
+    let mut count = 0;
+    for entry in std::fs::read_dir(directory)
+        .with_context(|| format!("Failed to read log directory: {}", directory.display()))?
+    {
+        check_archive_cancelled(cancelled)?;
+        let entry = entry.context("Failed to read log directory entry")?;
+        let path = entry.path();
+        let kind = entry.file_type().context("Failed to inspect log entry")?;
+        if kind.is_dir() {
+            if path != temporary {
+                count += append_log_files(archive, root, &path, temporary, cancelled)?;
+            }
+        } else if kind.is_file() {
+            let file = std::fs::File::open(&path)
+                .with_context(|| format!("Failed to open log file: {}", path.display()))?;
+            let metadata = file.metadata().context("Failed to inspect log file")?;
+            let mut header = tar::Header::new_gnu();
+            header.set_metadata(&metadata);
+            // 固定读取打开时的长度，避免持续追加的日志导致打包无法结束。
+            let reader = ArchiveReader {
+                file: file.take(metadata.len()),
+                cancelled,
+            };
+            archive
+                .append_data(&mut header, path.strip_prefix(root)?, reader)
+                .with_context(|| format!("Failed to archive log file: {}", path.display()))?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn archive_preserves_nested_files_and_skips_empty_or_missing_directories() {
+        let directory = tempfile::tempdir().unwrap();
+        let cancelled = AtomicBool::new(false);
+        assert!(
+            create_archive(&directory.path().join("missing"), &cancelled)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            create_archive(directory.path(), &cancelled)
+                .unwrap()
+                .is_none()
+        );
+        std::fs::create_dir(directory.path().join("nested")).unwrap();
+        std::fs::write(directory.path().join("rsd.log"), b"current logs").unwrap();
+        std::fs::write(directory.path().join("nested/other.txt"), b"nested logs").unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("rsd.log", directory.path().join("link")).unwrap();
+            std::os::unix::fs::symlink("nested", directory.path().join("linked-dir")).unwrap();
+        }
+        let (temporary, path) = create_archive(directory.path(), &cancelled)
+            .unwrap()
+            .unwrap();
+        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(
+            std::fs::File::open(&path).unwrap(),
+        ));
+        let mut entries = std::collections::BTreeMap::new();
+        for entry in archive.entries().unwrap() {
+            let mut entry = entry.unwrap();
+            let path = entry.path().unwrap().into_owned();
+            let mut contents = String::new();
+            entry.read_to_string(&mut contents).unwrap();
+            entries.insert(path, contents);
+        }
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[Path::new("rsd.log")], "current logs");
+        assert_eq!(entries[Path::new("nested/other.txt")], "nested logs");
+        drop(archive);
+        drop(temporary);
+        assert!(!path.exists());
+        cancelled.store(true, Ordering::Relaxed);
+        assert!(create_archive(directory.path(), &cancelled).is_err());
+        assert!(directory.path().join("rsd.log").exists());
+    }
 
     struct TestDir(PathBuf);
 

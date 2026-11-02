@@ -61,7 +61,7 @@ pub async fn screenshot() -> anyhow::Result<()> {
         .await
         .context("Screenshot task failed")??;
     let count = files.len();
-    Api::upload_files(files).await?;
+    Api::upload_screenshots(files).await?;
     tracing::info!("Uploaded {count} screenshots in {:?}", start.elapsed());
     Ok(())
 }
