@@ -59,6 +59,10 @@ addr = "rsd.example.com"
 port = 443
 tls = true
 
+[http]
+# 截屏和日志上传接口的路径前缀
+path = "/device/rsd"
+
 [websocket]
 path = "/ws/rsd/cmd"
 reconnect_interval_sec = 30
@@ -80,6 +84,7 @@ level = "info"
 | `server.addr` | 必填 | 服务端主机名或 IP                                                    |
 | `server.tls` | `true` | `true` 使用 `wss`，`false` 使用 `ws`                               |
 | `server.port` | `443` / `80` | TLS 开启时默认 443，关闭时默认 80                                        |
+| `http.path` | `/device/rsd` | 截屏和日志上传接口的 HTTP 路径前缀；必须是绝对路径，不能包含主机、查询参数、片段、反斜杠或空白字符 |
 | `websocket.path` | `/device/rsd/cmd` | WebSocket 路径                                                  |
 | `websocket.reconnect_interval_sec` | `30` | 重连间隔，单位为秒                                                     |
 | `websocket.heartbeat_enabled` | `true` | 是否发送心跳                                                        |
@@ -172,6 +177,8 @@ wss://rsd.example.com:443/ws/rsd/cmd
 | 服务端 → rsd | `apps` | Apps 配置 | 下发启动器和应用清单 |
 | 服务端 → rsd | `config` | 任意 JSON | 当前仅记录调试日志，不会修改运行配置 |
 | 服务端 → rsd | `update` | 更新信息 | 下载并校验新版本，替换后自动重启 |
+| 服务端 → rsd | `screenshot` | 无 | 截取所有显示器并上传 PNG 文件 |
+| 服务端 → rsd | `log` | 无 | 打包日志目录并上传 gzip 压缩的 tar 文件 |
 
 连接成功后，`rsd` 发送设备声明消息：
 
@@ -215,26 +222,10 @@ wss://rsd.example.com:443/ws/rsd/cmd
 }
 ```
 
-服务端可发送自更新消息。`url` 必须指向当前操作系统的裸可执行文件，`sha256` 为 64 位十六进制摘要：
-
-```json
-{
-  "cmd": "update",
-  "timestamp": 1792921844000,
-  "data": {
-    "version": "0.2.0",
-    "target": "x86_64-unknown-linux-gnu",
-    "url": "https://example.com/rsd-linux-x86_64",
-    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-  }
-}
-```
-
-客户端会先将 `target` 与自身 Rust target 三元组进行严格比较；不匹配时只记录日志，不下载更新。客户端仅在目标版本高于当前版本时下载。下载文件通过 SHA-256 校验后才会替换当前可执行文件；成功后停止托管应用并自动重启到新版本。下载、校验或替换失败时记录错误并继续运行旧版本。服务端应结合 `declare` 中的 `os`、`arch` 选择正确的 target 和下载地址。
-
 服务端应发送可解析的 JSON 文本帧。未知 `cmd`、缺少必填 `timestamp` 或无法解析的消息会被客户端忽略并记录警告。
 
 当前协议没有版本字段、额外的 WebSocket 握手鉴权头和 Apps 处理回执。服务端如需鉴权，应在反向代理或网络层处理。
+
 
 ## Apps 配置数据结构
 
@@ -317,6 +308,50 @@ wss://rsd.example.com:443/ws/rsd/cmd
 ```
 
 启动器直接以子进程方式运行，不经过 shell。没有活动应用时，客户端会停止当前托管的应用；活动应用的 `launcher_id` 找不到对应启动器时，本次 Apps 配置处理失败，现有应用进程保持不变。
+
+
+### 自更新消息
+
+服务端可发送自更新消息。`url` 必须指向当前操作系统的裸可执行文件，`sha256` 为 64 位十六进制摘要：
+
+```json
+{
+  "cmd": "update",
+  "timestamp": 1792921844000,
+  "data": {
+    "version": "0.2.0",
+    "target": "x86_64-unknown-linux-gnu",
+    "url": "https://example.com/rsd-linux-x86_64",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}
+```
+
+客户端会先将 `target` 与自身 Rust target 三元组进行严格比较；不匹配时只记录日志，不下载更新。客户端仅在目标版本高于当前版本时下载。下载文件通过 SHA-256 校验后才会替换当前可执行文件；成功后停止托管应用并自动重启到新版本。下载、校验或替换失败时记录错误并继续运行旧版本。服务端应结合 `declare` 中的 `os`、`arch` 选择正确的 target 和下载地址。
+
+### 截屏和日志命令
+
+`screenshot` 和 `log` 命令不需要 `data` 字段。每个命令都会启动异步上传任务；同类上传任务进行期间收到的重复命令会被跳过。
+
+- `screenshot`：截取所有可用显示器，每个显示器生成一个 `screenshot-N.png` 文件，并以 `image/png` 类型上传。平台要求见[截屏支持条件](#截屏支持条件)。
+- `log`：递归打包配置的日志目录，生成 `rsd-logs-<timestamp>.tar.gz`，并以 `application/gzip` 类型上传。日志目录不存在或为空时跳过上传。
+
+### HTTP 上传接口
+
+上传基础地址如下：
+
+```text
+http(s)://<server.addr>:<server.port><http.path>
+```
+
+客户端使用 multipart/form-data 请求调用以下接口：
+
+| 方法 | 接口 | 表单字段 | 内容 |
+| --- | --- | --- | --- |
+| `POST` | `<http.path>/screenshot` | `files`（一个或多个） | 名为 `screenshot-N.png` 的 PNG 截屏文件 |
+| `POST` | `<http.path>/log` | `files`（一个） | 名为 `rsd-logs-<timestamp>.tar.gz` 的 gzip 压缩 tar 文件 |
+
+服务端应返回成功的 HTTP 状态码。非成功响应或上传失败会被客户端记录为错误日志。
 
 ## 截屏支持条件
 

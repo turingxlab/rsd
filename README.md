@@ -59,6 +59,10 @@ addr = "rsd.example.com"
 port = 443
 tls = true
 
+[http]
+# API path prefix for screenshot and log uploads
+path = "/device/rsd"
+
 [websocket]
 path = "/ws/rsd/cmd"
 reconnect_interval_sec = 30
@@ -80,6 +84,7 @@ Main configuration options:
 | `server.addr` | Required | Server hostname or IP |
 | `server.tls` | `true` | `true` uses `wss`; `false` uses `ws` |
 | `server.port` | `443` / `80` | Defaults to 443 with TLS enabled, or 80 with TLS disabled |
+| `http.path` | `/device/rsd` | HTTP API path prefix for screenshot and log uploads; must be an absolute path without a host, query, fragment, backslash, or whitespace |
 | `websocket.path` | `/device/rsd/cmd` | WebSocket path |
 | `websocket.reconnect_interval_sec` | `30` | Reconnection interval in seconds |
 | `websocket.heartbeat_enabled` | `true` | Whether to send heartbeats |
@@ -171,6 +176,8 @@ The client and server exchange UTF-8 JSON through WebSocket text frames. All mes
 | server → rsd | `apps` | Apps configuration | Delivers launchers and the application list |
 | server → rsd | `config` | Arbitrary JSON | Currently only writes a debug log and does not change runtime configuration |
 | server → rsd | `update` | Update information | Downloads and verifies a new version, then replaces and restarts |
+| server → rsd | `screenshot` | None | Captures every display and uploads PNG files |
+| server → rsd | `log` | None | Archives the log directory and uploads a gzip-compressed tar archive |
 
 After connecting, `rsd` sends a device declaration message:
 
@@ -214,26 +221,10 @@ The server may respond with:
 }
 ```
 
-The server can send a self-update message. `url` must point to a raw executable for the current operating system, and `sha256` must contain a 64-character hexadecimal digest:
-
-```json
-{
-  "cmd": "update",
-  "timestamp": 1792921844000,
-  "data": {
-    "version": "0.2.0",
-    "target": "x86_64-unknown-linux-gnu",
-    "url": "https://example.com/rsd-linux-x86_64",
-    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-  }
-}
-```
-
-The client first compares `target` with its own Rust target triple and ignores mismatched updates without downloading them. It downloads only when the target version is newer than the running version. The executable is replaced only after its SHA-256 digest matches; after a successful update, managed applications are stopped and the process restarts into the new version. Download, verification, or replacement failures are logged while the old version keeps running. The server should use `os` and `arch` from `declare` to select the correct target and download URL.
-
 The server should send parseable JSON text frames. Messages with an unknown `cmd`, a missing required `timestamp`, or invalid JSON are ignored by the client and logged as warnings.
 
 The current protocol has no version field, additional WebSocket handshake authentication headers, or Apps processing acknowledgements. If authentication is required, it should be handled by a reverse proxy or at the network layer.
+
 
 ## Apps Configuration Data Structure
 
@@ -316,6 +307,50 @@ The client selects the first application with `active = true` and looks up the c
 ```
 
 The launcher runs directly as a child process without a shell. If there is no active application, the client stops the currently managed application. If no launcher matches the active application's `launcher_id`, processing of the Apps configuration fails and the existing application process remains unchanged.
+
+
+### Self-update Message
+
+The server can send a self-update message. `url` must point to a raw executable for the current operating system, and `sha256` must contain a 64-character hexadecimal digest:
+
+```json
+{
+  "cmd": "update",
+  "timestamp": 1792921844000,
+  "data": {
+    "version": "0.2.0",
+    "target": "x86_64-unknown-linux-gnu",
+    "url": "https://example.com/rsd-linux-x86_64",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}
+```
+
+The client first compares `target` with its own Rust target triple and ignores mismatched updates without downloading them. It downloads only when the target version is newer than the running version. The executable is replaced only after its SHA-256 digest matches; after a successful update, managed applications are stopped and the process restarts into the new version. Download, verification, or replacement failures are logged while the old version keeps running. The server should use `os` and `arch` from `declare` to select the correct target and download URL.
+
+### Screenshot and Log Commands
+
+The `screenshot` and `log` commands do not require a `data` field. Each command starts an asynchronous upload task; a repeated command received while the same upload is in progress is skipped.
+
+- `screenshot`: Captures every available display and uploads one `screenshot-N.png` file per display with the `image/png` content type. See [Screenshot Requirements](#screenshot-requirements) for platform requirements.
+- `log`: Recursively archives the configured log directory as `rsd-logs-<timestamp>.tar.gz` and uploads it with the `application/gzip` content type. A missing or empty log directory is skipped.
+
+### HTTP Upload API
+
+The upload base URL is constructed as follows:
+
+```text
+http(s)://<server.addr>:<server.port><http.path>
+```
+
+The client sends multipart form-data requests to:
+
+| Method | Endpoint | Form field | Content |
+| --- | --- | --- | --- |
+| `POST` | `<http.path>/screenshot` | `files` (one or more) | PNG screenshots named `screenshot-N.png` |
+| `POST` | `<http.path>/log` | `files` (one) | gzip-compressed tar archive named `rsd-logs-<timestamp>.tar.gz` |
+
+The server should return a successful HTTP status. The client treats unsuccessful responses or upload failures as errors and records them in the log.
 
 ## Screenshot Requirements
 
