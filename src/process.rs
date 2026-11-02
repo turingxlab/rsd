@@ -262,6 +262,10 @@ fn browser_args_with_home(
         "--no-default-browser-check".to_string(),
         // 隐藏崩溃恢复提示气泡（防止异常退出后弹出“恢复页面”窗口）
         "--hide-crash-restore-bubble".to_string(),
+        // 使用 Chromium 的基础密码存储模式（basic）
+        // 避免在系统开启自动登录时，触发 GNOME 密钥环（Keyring）的解锁弹窗
+        // 此模式会降低密码存储的加密强度，但无人值守大屏一般不太会使用密码
+        "--password-store=basic".to_string(),
         // 使用独立 profile 路径，使 rsd 启动的浏览器实例不受用户已打开的实例影响
         format!(
             "--user-data-dir={}",
