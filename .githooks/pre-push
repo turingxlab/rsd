@@ -1,0 +1,71 @@
+#!/bin/sh
+
+set -eu
+
+zero_sha="0000000000000000000000000000000000000000"
+
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+    case "$remote_ref" in
+        refs/tags/v*) ;;
+        *) continue ;;
+    esac
+
+    # 删除远端 tag 时无需校验版本
+    if [ "$local_sha" = "$zero_sha" ]; then
+        continue
+    fi
+
+    tag=${remote_ref#refs/tags/}
+
+    # 使用 tag 实际指向的提交，避免误用工作区中尚未提交的版本
+    if ! cargo_toml=$(git show "${local_sha}^{commit}:Cargo.toml" 2>/dev/null); then
+        printf 'Error: Unable to read Cargo.toml from the commit for tag %s.\n' "$tag" >&2
+        exit 1
+    fi
+
+    version=$(
+        printf '%s\n' "$cargo_toml" | awk '
+            /^[[:space:]]*\[/ {
+                in_package = ($0 ~ /^[[:space:]]*\[[[:space:]]*package[[:space:]]*\][[:space:]]*(#.*)?$/)
+                next
+            }
+
+            in_package && /^[[:space:]]*version[[:space:]]*=/ {
+                line = $0
+                sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*/, "", line)
+                sub(/[[:space:]]+#.*$/, "", line)
+                sub(/[[:space:]]+$/, "", line)
+
+                if (length(line) < 2) {
+                    exit 1
+                }
+
+                first = substr(line, 1, 1)
+                last = substr(line, length(line), 1)
+                if ((first == "\"" && last == "\"") || (first == "\047" && last == "\047")) {
+                    value = substr(line, 2, length(line) - 2)
+                    if (length(value) > 0) {
+                        print value
+                        exit 0
+                    }
+                }
+
+                exit 1
+            }
+        '
+    ) || version=""
+
+    if [ -z "$version" ]; then
+        printf 'Error: Could not read package.version from Cargo.toml for tag %s.\n' "$tag" >&2
+        exit 1
+    fi
+
+    expected_tag="v${version}"
+    if [ "$tag" != "$expected_tag" ]; then
+        printf 'Error: Release tag %s does not match Cargo.toml version %s; expected %s.\n' "$tag" "$version" "$expected_tag" >&2
+        printf 'Error: Commit the correct Cargo.toml version before pushing this tag.\n' >&2
+        exit 1
+    fi
+
+    printf 'Release tag %s matches Cargo.toml version %s.\n' "$tag" "$version"
+done
